@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <RuntimeIdentifiers>linux-arm64;linux-x64</RuntimeIdentifiers>
+    <Version>10.0.0</Version>
+    <RootNamespace>LibcameraSharp</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package Properties">
+    <Title>LibcameraSharp.Core</Title>
+    <PackageId>LibcameraSharp.Core</PackageId>
+    <Description>libcamera for .NET: cameras, configurations, requests, frame buffers and typed controls generated from libcamera's own definitions. For building your own capture pipeline; LibcameraSharp builds photos and video on top. Native AOT ready.</Description>
+    <PackageTags>libcamera;camera;raspberry-pi;raspberrypi;capture;v4l2;native-aot;interop</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LibcameraSharp" />
+    <InternalsVisibleTo Include="LibcameraSharp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+    <!-- The native shim, packed per RID and copied for project references. -->
+    <None Include="runtimes/**/native/*.so" Pack="true" PackagePath="runtimes/" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>PhotoBooth</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In your own project this is a package reference:
+           <PackageReference Include="LibcameraSharp" Version="10.*" /> -->
+    <ProjectReference Include="../../src/LibcameraSharp/LibcameraSharp.csproj" />
+  </ItemGroup>
+
+</Project>

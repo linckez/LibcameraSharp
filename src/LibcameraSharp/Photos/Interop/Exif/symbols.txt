@@ -1,0 +1,5 @@
+exif_block_free
+exif_block_free_bytes
+exif_block_new
+exif_block_save
+exif_block_set

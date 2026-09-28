@@ -1,0 +1,37 @@
+# ABI verification and shim build image: Debian trixie arm64 with the libcamera a Raspberry Pi OS
+# user actually has installed, straight from the Pi package archive. No camera device is needed:
+# the image proves the shim compiles (static_asserts), links, and that the generated control/format
+# tables match the installed headers at runtime.
+#
+#   docker build --platform linux/arm64 -f src/LibcameraSharp.Native/Dockerfile.libcamera -t libcamerasharp-abi .
+#
+# One lane: Raspberry Pi OS Trixie's libcamera0.7 from archive.raspberrypi.com, pinned to the version
+# the bindings are generated against.
+FROM debian:trixie
+
+ARG LIBCAMERA_VERSION=0.7.2+rpt20260817-1
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl build-essential cmake pkg-config clang \
+        python3 python3-yaml python3-clang binutils libicu76 rsync git libtiff-dev libexif-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Raspberry Pi's archive: libcamera itself and its libpisp/tensorflow-lite runtime deps. Its archive
+# key still carries a SHA1 self-signature, which trixie's apt rejects (since 2026-02); this is a
+# verification-only image, so trust the repo explicitly.
+RUN echo "deb [trusted=yes] https://archive.raspberrypi.com/debian/ trixie main" \
+        > /etc/apt/sources.list.d/raspi.list
+
+RUN set -eux; apt-get update; \
+    apt-get install -y --no-install-recommends \
+        "libcamera0.7=${LIBCAMERA_VERSION}" "libcamera-ipa=${LIBCAMERA_VERSION}" "libcamera-dev=${LIBCAMERA_VERSION}"; \
+    dpkg -s libcamera0.7 | grep ^Version; \
+    rm -rf /var/lib/apt/lists/*
+
+# .NET 10 SDK, to run the binding's table/layout tests against this exact libcamera.
+RUN curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0 --install-dir /usr/share/dotnet \
+    && ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+
+WORKDIR /work

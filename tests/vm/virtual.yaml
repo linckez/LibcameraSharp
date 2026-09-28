@@ -1,0 +1,25 @@
+# Cameras for libcamera's `virtual` pipeline (userspace, NV12, no kernel device needed).
+# Installed by setup-libcamera.sh to /usr/local/share/libcamera/pipeline/virtual/virtual.yaml.
+%YAML 1.1
+---
+# Colour bars, like vimc but multi-plane NV12 and a second camera in the same process.
+"VirtualBars":
+  supported_formats:
+  - width: 1920
+    height: 1080
+    frame_rates:
+    - 30
+  - width: 640
+    height: 480
+  test_pattern: "bars"
+  location: "CameraLocationFront"
+  model: "Virtual Bars"
+# Plays one known image back as every frame: the pixel-exact oracle for capture and encoding.
+"VirtualImage":
+  supported_formats:
+  - width: 640
+    height: 480
+  frames:
+    path: "/usr/local/share/libcamera/pipeline/virtual/frames/"
+  location: "CameraLocationBack"
+  model: "Virtual Image"

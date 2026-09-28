@@ -1,0 +1,93 @@
+{
+  "structs": {
+    "libcamera_color_space": {
+      "align": 4,
+      "offsets": {
+        "primaries": 0,
+        "range": 12,
+        "transfer_function": 4,
+        "ycbcr_encoding": 8
+      },
+      "size": 16
+    },
+    "libcamera_frame_metadata_plane": {
+      "align": 4,
+      "offsets": {
+        "bytes_used": 0
+      },
+      "size": 4
+    },
+    "libcamera_framebuffer_plane_info": {
+      "align": 4,
+      "offsets": {
+        "fd": 0,
+        "length": 8,
+        "offset": 4
+      },
+      "size": 12
+    },
+    "libcamera_pixel_format": {
+      "align": 8,
+      "offsets": {
+        "fourcc": 0,
+        "modifier": 8
+      },
+      "size": 16
+    },
+    "libcamera_point": {
+      "align": 4,
+      "offsets": {
+        "x": 0,
+        "y": 4
+      },
+      "size": 8
+    },
+    "libcamera_rectangle": {
+      "align": 4,
+      "offsets": {
+        "height": 12,
+        "width": 8,
+        "x": 0,
+        "y": 4
+      },
+      "size": 16
+    },
+    "libcamera_size": {
+      "align": 4,
+      "offsets": {
+        "height": 4,
+        "width": 0
+      },
+      "size": 8
+    },
+    "libcamera_size_range": {
+      "align": 4,
+      "offsets": {
+        "hStep": 16,
+        "max": 8,
+        "min": 0,
+        "vStep": 20
+      },
+      "size": 24
+    },
+    "libcamera_stream_configuration": {
+      "align": 8,
+      "offsets": {
+        "buffer_count": 32,
+        "frame_size": 28,
+        "pixel_format": 0,
+        "size": 16,
+        "stride": 24
+      },
+      "size": 40
+    },
+    "libcamera_transform": {
+      "align": 4,
+      "offsets": {
+        "value": 0
+      },
+      "size": 4
+    }
+  },
+  "target": "aarch64-linux-gnu"
+}

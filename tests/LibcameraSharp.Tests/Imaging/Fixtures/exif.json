@@ -1,0 +1,12 @@
+{
+ "camera_id": "/base/soc/i2c0mux/i2c@1/imx477@1a",
+ "now": "2026:09:22 12:34:56",
+ "metadata": {
+  "ExposureTime": 20000,
+  "AnalogueGain": 2.0,
+  "DigitalGain": 1.5,
+  "LensPosition": 4.0,
+  "SensorTimestamp": 123
+ },
+ "custom_model": "My Random Camera"
+}

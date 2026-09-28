@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Version>10.0.0</Version>
+    <RootNamespace>LibcameraSharp</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package Properties">
+    <Title>LibcameraSharp</Title>
+    <PackageId>LibcameraSharp</PackageId>
+    <Description>Photos, video and live frames from a Raspberry Pi camera in a few lines of C#: JPEG with EXIF, PNG and DNG; H.264 and MJPEG recordings to MP4, Matroska or MPEG-TS; frames you can hand to your own code. Built on LibcameraSharp.Core.</Description>
+    <PackageTags>libcamera;camera;raspberry-pi;raspberrypi;photo;jpeg;dng;video;h264;mp4;recording;streaming</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LibcameraSharp.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../LibcameraSharp.Core/LibcameraSharp.Core.csproj" />
+    <!-- Image codecs. MIT; the native library ships per RID from the NativeAssets package. -->
+    <PackageReference Include="SkiaSharp" Version="4.152.*" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.*" />
+    <!-- Binds the system's FFmpeg and ships no native code; its version must match the FFmpeg the OS
+         ships: 7.1.1 is FFmpeg 7.1, as on Raspberry Pi OS trixie and Debian 13. -->
+    <PackageReference Include="FFmpeg.AutoGen" Version="7.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+    <!-- The libtiff shim (DNG writing), packed per RID and copied for project references. -->
+    <None Include="runtimes/**/native/*.so" Pack="true" PackagePath="runtimes/" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

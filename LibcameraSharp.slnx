@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LibcameraSharp.Core/LibcameraSharp.Core.csproj" />
+    <Project Path="src/LibcameraSharp/LibcameraSharp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LibcameraSharp.Tests/LibcameraSharp.Tests.csproj" />
+    <Project Path="tests/LibcameraSharp.Scenarios/LibcameraSharp.Scenarios.csproj" />
+  </Folder>
+  <Folder Name="/demo/">
+    <Project Path="demo/PhotoBooth/PhotoBooth.csproj" />
+    <Project Path="demo/StreamingCamera/StreamingCamera.csproj" />
+  </Folder>
+</Solution>
