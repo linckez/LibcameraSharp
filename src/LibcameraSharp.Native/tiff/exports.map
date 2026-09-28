@@ -1,0 +1,4 @@
+{
+  global: tiff_*;
+  local: *;
+};

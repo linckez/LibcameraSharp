@@ -1,0 +1,30 @@
+[
+ {
+  "name": "csi2p10",
+  "format": "SRGGB10_CSI2P",
+  "width": 44,
+  "height": 6,
+  "stride": 64
+ },
+ {
+  "name": "csi2p12",
+  "format": "SGBRG12_CSI2P",
+  "width": 44,
+  "height": 6,
+  "stride": 80
+ },
+ {
+  "name": "unpacked10",
+  "format": "SRGGB10",
+  "width": 44,
+  "height": 6,
+  "stride": 96
+ },
+ {
+  "name": "pisp1",
+  "format": "RGGB_PISP_COMP1",
+  "width": 44,
+  "height": 6,
+  "stride": 48
+ }
+]

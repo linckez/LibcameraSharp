@@ -1,0 +1,39 @@
+{
+ "config": {
+  "format": "SRGGB10_CSI2P",
+  "size": [
+   64,
+   32
+  ],
+  "stride": 96,
+  "framesize": 3072
+ },
+ "metadata": {
+  "SensorBlackLevels": [
+   4096,
+   4096,
+   4096,
+   4096
+  ],
+  "ColourGains": [
+   1.8,
+   1.5
+  ],
+  "ColourCorrectionMatrix": [
+   1.90255,
+   -0.77478,
+   -0.12777,
+   -0.31338,
+   1.88197,
+   -0.56858,
+   -0.06001,
+   -0.61785,
+   1.67786
+  ],
+  "ExposureTime": 20000,
+  "AnalogueGain": 2.0,
+  "DigitalGain": 1.0,
+  "SensorTimestamp": 123456789
+ },
+ "model": "imx477"
+}

@@ -1,0 +1,4 @@
+{
+  global: exif_block_*;
+  local: *;
+};

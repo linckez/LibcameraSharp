@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>StreamingCamera</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In your own project these are package references. -->
+    <ProjectReference Include="../../src/LibcameraSharp/LibcameraSharp.csproj" />
+  </ItemGroup>
+
+</Project>

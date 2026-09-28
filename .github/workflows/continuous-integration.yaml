@@ -1,0 +1,79 @@
+###########################################################
+#                                                         #
+#   TL;DR: Only tests and verifies code. Nothing else.    #
+#   - Automatically triggered on PRs to main branch.      #
+#                                                         #
+#   Hosted runners have no camera and no V4L2, so the     #
+#   capture tests run locally in the Lima VM (see         #
+#   CONTRIBUTING.md). Here: build, the camera-free tests  #
+#   against Pi OS's libcamera under QEMU, generated     #
+#   code up to date, version bumped.                      #
+#                                                         #
+###########################################################
+
+name: Continuous Integration | LibcameraSharp Package
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - src/**
+      - tests/**
+      - .github/workflows/continuous-integration.yaml
+
+jobs:
+  build:
+    name: .NET Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Checkout 📥
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Setup .NET 👨🏽‍💻
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
+        with:
+          dotnet-version: 10.x
+
+      - name: Get Released Version 🏷️
+        id: released
+        run: |
+          version=$(gh release list --json tagName --jq 'first | .tagName // "" | ltrimstr("v") | split(".")[:-1] | join(".")' --limit 20)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Package Version 📌
+        id: csproj
+        run: echo "version=$(dotnet msbuild src/LibcameraSharp/LibcameraSharp.csproj -getProperty:Version)" >> $GITHUB_OUTPUT
+
+      - name: Fail if version not bumped ❌
+        if: steps.released.outputs.version == steps.csproj.outputs.version
+        run: |
+          echo "::error::Version ${{ steps.csproj.outputs.version }} matches latest release. Bump <Version> in the csproj."
+          exit 1
+
+      - name: Build Solution 🚧
+        shell: bash
+        run: dotnet build LibcameraSharp.slnx --verbosity normal --configuration Release
+
+      - name: Layout Tests (no native code) 🧪
+        shell: bash
+        run: dotnet test tests/LibcameraSharp.Tests --no-build --configuration Release --filter "FullyQualifiedName~LayoutTests" --logger trx --results-directory test-results
+
+  verify-abi:
+    name: Verify against Raspberry Pi OS libcamera (arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Checkout 📥
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup QEMU for arm64 🖥️
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
+        with:
+          platforms: arm64
+
+      - name: Build shim, regenerate, run camera-free tests 🐞
+        shell: bash
+        run: src/LibcameraSharp.Native/verify-abi.sh
