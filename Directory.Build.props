@@ -1,5 +1,5 @@
 <Project>
-  <!-- Shared by src/, tests/ and samples/. Package metadata lives in src/Directory.Build.props. -->
+  <!-- Shared by src/, tests/ and demo/. Package metadata lives in src/Directory.Build.props. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>14</LangVersion>

@@ -1,7 +1,7 @@
 # Photos
 
 ```csharp
-using CameraDevice camera = CameraDevice.Open();
+await using CameraDevice camera = CameraDevice.Open();
 
 Photo photo = await camera.CapturePhotoAsync();
 await photo.SaveAsync("photo.jpg");

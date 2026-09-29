@@ -25,7 +25,7 @@ dotnet add package LibcameraSharp
 ```csharp
 using LibcameraSharp;
 
-using CameraDevice camera = CameraDevice.Open();
+await using CameraDevice camera = CameraDevice.Open();
 
 Photo photo = await camera.CapturePhotoAsync();
 await photo.SaveAsync("photo.jpg");
@@ -40,8 +40,9 @@ A full-resolution JPEG with EXIF. Cameras with autofocus focus first.
 **Record a video:**
 
 ```csharp
-await using (camera.RecordTo("clip.mp4"))
-    await Task.Delay(TimeSpan.FromSeconds(10));
+VideoRecording recording = await camera.StartRecordingAsync("clip.mp4");
+await Task.Delay(TimeSpan.FromSeconds(10));
+await recording.StopAsync();
 ```
 
 **Stream to a browser** (ASP.NET Core):

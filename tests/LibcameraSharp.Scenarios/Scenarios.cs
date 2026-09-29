@@ -18,7 +18,7 @@ static class Champions
 
     public static async Task One(CancellationToken ct)
     {
-        using CameraDevice camera = CameraDevice.Open();
+        await using CameraDevice camera = CameraDevice.Open();
 
         Photo photo = await camera.CapturePhotoAsync(cancellationToken: ct);
         await photo.SaveAsync(path: "photo.jpg", cancellationToken: ct);
@@ -53,11 +53,10 @@ static class Champions
             KeyframeInterval = 60,                                   // frames
         };
 
-        await using (VideoRecording recording = camera.RecordTo("clip.mp4", clip))
-        {
-            await Task.Delay(TimeSpan.FromSeconds(10), ct);
-            Console.WriteLine($"{recording.FrameCount} frames");
-        }
+        VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", clip, ct);
+        await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        await recording.StopAsync();                                  // reports a full disk as an IOException
+        Console.WriteLine($"{recording.FrameCount} frames");
     }
 
     public static async Task Four(CameraDevice camera, CancellationToken ct)
@@ -120,7 +119,7 @@ static class Champions
         foreach (CameraInfo found in cameras)
             Console.WriteLine($"{found.Model}  {found.Id}");
 
-        using CameraDevice camera = CameraDevice.Open(cameras[1].Id);
+        await using CameraDevice camera = CameraDevice.Open(cameras[1].Id);
 
         IReadOnlyList<SensorMode> modes = await camera.ProbeSensorModesAsync(ct);
         SensorMode fast = modes.MaxBy(mode => mode.MaxFrameRate)!;
@@ -130,8 +129,9 @@ static class Champions
             Streams = new StreamSettings { CaptureSize = new Size(1920, 1080), SensorMode = fast },
         };
 
-        await using VideoRecording recording = camera.RecordTo("clip.mp4", options);
+        VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", options, ct);
         await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        await recording.StopAsync();
     }
 
     static Task DetectAsync(ReadOnlyMemory<byte> luma, Size size, int stride, CancellationToken ct) => Task.CompletedTask;

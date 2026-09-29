@@ -57,15 +57,18 @@ public sealed unsafe class ControlInfo
         return result;
     }
 
+    // The limits as boxed values of whatever type the control has, for a managed copy of the camera's controls.
+    internal object MinValue => ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_min(_info), Key);
+
+    internal object MaxValue => ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_max(_info), Key);
+
+    internal object? DefaultValue => HasDefault ? ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_def(_info), Key) : null;
+
     /// <summary>The range as libcamera prints it, e.g. <c>[-1.000000..1.000000]</c> or <c>[0..1]</c>, with the default when there is one.</summary>
     public override string ToString()
     {
-        var min = ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_min(_info), Key);
-        var max = ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_max(_info), Key);
-        var range = $"[{Render(min)}..{Render(max)}]";
-        if (!HasDefault)
-            return range;
-        return $"{range} default {Render(ControlValueCodec.ReadBoxed(NativeMethods.libcamera_control_info_def(_info), Key))}";
+        var range = $"[{Render(MinValue)}..{Render(MaxValue)}]";
+        return DefaultValue is { } defaultValue ? $"{range} default {Render(defaultValue)}" : range;
     }
 
     private static string Render(object value) => value switch

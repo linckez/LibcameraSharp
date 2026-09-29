@@ -122,10 +122,10 @@ public unsafe class ControlList : IEnumerable<KeyValuePair<uint, ControlType>>, 
             NativeMethods.libcamera_control_list_set(Pointer, (libcamera_property_id)id, value);
     }
 
-    /// <summary>The generated key for an id in this list, or one described from its stored value.</summary>
+    /// <summary>The generated key for an id in this list (a property's, in a property list), or one described from its stored value.</summary>
     internal ControlKey KeyFor(uint id)
     {
-        if (ControlKeys.ByControlId(id) is { } key)
+        if (LookupKey(id) is { } key)
             return key;
 
         var value = NativeMethods.libcamera_control_list_get(Pointer, (libcamera_property_id)id);

@@ -106,18 +106,18 @@ public class OptionsTranslationTests
     public void A_camera_that_can_focus_focuses_unless_told_otherwise()
     {
         // Photos scan before they are taken; video and frames focus continuously.
-        var photo = Translate(CameraDevice.WithDefaultFocus(new CameraControls(), CameraUse.Photo, canFocus: true));
+        var photo = Translate(CameraSession.WithDefaultFocus(new CameraControls(), CameraUse.Photo, canFocus: true));
         Assert.Equal(AfMode.Auto, photo.Get(Controls.AfMode));
         Assert.Equal(AfTrigger.Start, photo.Get(Controls.AfTrigger));
 
-        var video = Translate(CameraDevice.WithDefaultFocus(new CameraControls(), CameraUse.Video, canFocus: true));
+        var video = Translate(CameraSession.WithDefaultFocus(new CameraControls(), CameraUse.Video, canFocus: true));
         Assert.Equal(AfMode.Continuous, video.Get(Controls.AfMode));
 
         // A focus you chose is kept, and a fixed-focus camera is sent nothing.
-        var chosen = Translate(CameraDevice.WithDefaultFocus(new CameraControls { Focus = FocusMode.Infinity }, CameraUse.Photo, canFocus: true));
+        var chosen = Translate(CameraSession.WithDefaultFocus(new CameraControls { Focus = FocusMode.Infinity }, CameraUse.Photo, canFocus: true));
         Assert.Equal(AfMode.Manual, chosen.Get(Controls.AfMode));
         Assert.False(chosen.Contains(Controls.AfTrigger));
-        Assert.False(Translate(CameraDevice.WithDefaultFocus(new CameraControls(), CameraUse.Photo, canFocus: false)).Contains(Controls.AfMode));
+        Assert.False(Translate(CameraSession.WithDefaultFocus(new CameraControls(), CameraUse.Photo, canFocus: false)).Contains(Controls.AfMode));
     }
 
     [Fact]

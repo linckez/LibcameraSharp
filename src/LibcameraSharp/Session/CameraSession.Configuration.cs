@@ -1,6 +1,8 @@
 using LibcameraSharp.Advanced;
 using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
 
+// Everything here runs on the session's loop.
+
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
@@ -87,6 +89,7 @@ internal sealed partial class CameraSession
     /// <exception cref="LibcameraException">libcamera rejected the configuration.</exception>
     public void Configure(SessionConfiguration cameraConfig)
     {
+        ThrowIfClosing();
         if (Started)
             throw new InvalidOperationException("Camera must be stopped before configuring.");
         var config = cameraConfig.Clone();
@@ -141,12 +144,16 @@ internal sealed partial class CameraSession
         // Hang on to the last completed request only when there's more than one buffer; with one it would stall the pipeline.
         _maxQueueLength = config.BufferCount > 1 ? 1 : 0;
 
-        _allocation = new BufferAllocation(_camera, _streams.Values);
+        _allocation = new BufferAllocation(_camera, _streams);
 
         CameraConfiguration = config;
         Controls = new PendingControls(_camera.Controls);
         Controls.SetControls(config.Controls);
+        _applied = new PendingControls(_camera.Controls);
         _configureCount++;
+
+        // Ranges can follow the sensor mode, so callers get a fresh snapshot of what the camera now advertises.
+        Volatile.Write(ref _facts, ReadFacts());
     }
 
     // Pins the sensor readout by scoring every raw mode against the size and depth wanted; left alone,
@@ -242,9 +249,16 @@ internal sealed partial class CameraSession
         }
     }
 
+    // The old allocation is freed now, or kept until the last frame someone holds from it comes back.
     private void ReleaseConfiguration()
     {
-        _allocation?.Retire();
+        ReleaseReady();
+        if (_allocation is { } old)
+        {
+            old.Retire();
+            if (!old.Disposed)
+                _retired.Add(old);
+        }
         _allocation = null;
         _libcameraConfig?.Dispose();
         _libcameraConfig = null;

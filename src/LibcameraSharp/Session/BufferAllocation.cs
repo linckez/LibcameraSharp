@@ -4,101 +4,85 @@ using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not Syst
 namespace LibcameraSharp;
 
 /// <summary>
-/// The buffers and requests of one configuration. They outlive a reconfigure for as long as a
-/// <see cref="CapturedFrame"/> still reads from them, and are freed once the last one is disposed.
+/// The buffers of one configuration, with one request per buffer for as long as the allocation lives. Only the
+/// session's loop touches it. It outlives a reconfigure for as long as a <see cref="CapturedFrame"/> still reads
+/// from it, and is freed when the last one is disposed.
 /// </summary>
-/// <remarks>The allocation also owns the requests made over its buffers, and disposes them with it.</remarks>
-internal sealed class BufferAllocation : IDisposable
+/// <remarks>
+/// A request stays tied to its buffer, so a frame someone holds across a stop and start stays theirs: a start
+/// queues only the requests nobody holds.
+/// </remarks>
+internal sealed class BufferAllocation
 {
-    private readonly Lock _lock = new();
     private readonly FrameBufferAllocator _allocator;
-    private readonly List<Request> _requests = [];
-    private readonly Dictionary<Request, int> _acquired = [];          // readers per request: a frame loop and each recording
+    private readonly Dictionary<Request, Slot> _slots = [];
+    private bool _closed;
     private bool _retired;
-    private bool _disposed;
 
-    /// <summary>Allocates <c>buffer_count</c> buffers for every stream of the configured camera.</summary>
-    public BufferAllocation(ActiveCamera camera, IEnumerable<Stream> streams)
+    /// <summary>What the loop knows about one request: whether libcamera has it, in which run, and who holds its frame.</summary>
+    internal sealed class Slot
+    {
+        /// <summary>True while libcamera has the request.</summary>
+        public bool Queued { get; set; }
+
+        /// <summary>
+        /// Completions from before a stop still on their way. For each stop that found libcamera holding the request,
+        /// exactly one more completion comes, cancelled by the stop or already in flight; it belongs to an old run and
+        /// is ignored, even if the request has been queued again since.
+        /// </summary>
+        public int StaleCompletions { get; set; }
+
+        /// <summary>Holders of its frame: frame loops, captures, recordings and the ready slot. Queued again only at zero.</summary>
+        public int Leases { get; set; }
+    }
+
+    /// <summary>Allocates the buffers of every stream and makes one request per buffer, as many as the stream with the fewest buffers has.</summary>
+    public BufferAllocation(ActiveCamera camera, IReadOnlyDictionary<SessionStream, Stream> streams)
     {
         _allocator = new FrameBufferAllocator(camera);
-        foreach (var stream in streams)
+        foreach (var stream in streams.Values)
             _allocator.Allocate(stream);
-    }
 
-    public IReadOnlyList<FrameBuffer> Buffers(Stream stream) => _allocator.Buffers(stream);
-
-    /// <summary>A request created for this allocation; it is disposed with the allocation.</summary>
-    public Request Track(Request request)
-    {
-        lock (_lock)
-            _requests.Add(request);
-        return request;
-    }
-
-    public bool Owns(Request request)
-    {
-        lock (_lock)
-            return _requests.Contains(request);
-    }
-
-    /// <summary>Marks the request as read by one more <see cref="CapturedFrame"/>.</summary>
-    public void Acquire(Request request)
-    {
-        lock (_lock)
-            _acquired[request] = _acquired.GetValueOrDefault(request) + 1;
-    }
-
-    /// <summary>Marks the request as no longer read; frees everything if this allocation was retired meanwhile.</summary>
-    public void Release(Request request)
-    {
-        lock (_lock)
+        var count = streams.Values.Min(stream => _allocator.Buffers(stream).Count);
+        for (var i = 0; i < count; i++)
         {
-            if (_acquired.TryGetValue(request, out var readers) && readers > 1)
-                _acquired[request] = readers - 1;
-            else
-                _acquired.Remove(request);
-            if (!_retired || _acquired.Count > 0)
-                return;
+            var request = camera.CreateRequest((ulong)i);
+            foreach (var stream in streams.Values)
+                request.AddBuffer(stream, _allocator.Buffers(stream)[i]);
+            _slots[request] = new Slot();
         }
-        Dispose();
     }
 
-    /// <summary>Replaced by a newer allocation: free now, or when the last reader lets go.</summary>
+    /// <summary>Every request of this allocation, with what the loop knows about it.</summary>
+    public IReadOnlyDictionary<Request, Slot> Slots => _slots;
+
+    /// <summary>What the loop knows about <paramref name="request"/>, or null when it isn't one of this allocation's.</summary>
+    public Slot? SlotOf(Request request) => _slots.GetValueOrDefault(request);
+
+    /// <summary>True once the camera is closed: a frame read after that has no buffer behind it. Read from any thread.</summary>
+    public bool Closed => Volatile.Read(ref _closed);
+
+    /// <summary>Marks the allocation closed, before the camera frees its buffers.</summary>
+    public void Close() => Volatile.Write(ref _closed, true);
+
+    /// <summary>True once freed.</summary>
+    public bool Disposed { get; private set; }
+
+    /// <summary>Replaced by a newer allocation, or the camera closed: free now, or when the last frame comes back.</summary>
     public void Retire()
     {
-        lock (_lock)
-        {
-            _retired = true;
-            if (_acquired.Count > 0)
-                return;
-        }
-        Dispose();
+        _retired = true;
+        FreeIfUnused();
     }
 
-    /// <summary>Disposes the requests of a stopped camera, except those still being read; the next start makes fresh ones.</summary>
-    public void DiscardRequests()
+    /// <summary>Called after a lease is given back: a retired allocation is freed with its last frame.</summary>
+    public void FreeIfUnused()
     {
-        List<Request> unused;
-        lock (_lock)
-        {
-            unused = [.. _requests.Where(r => !_acquired.ContainsKey(r))];
-            _requests.RemoveAll(unused.Contains);
-        }
-        foreach (var request in unused)
+        if (!_retired || Disposed || _slots.Values.Any(slot => slot.Leases > 0))
+            return;
+        Disposed = true;
+        foreach (var request in _slots.Keys)
             request.Dispose();
-    }
-
-    public void Dispose()
-    {
-        lock (_lock)
-        {
-            if (_disposed)
-                return;
-            _disposed = true;
-        }
-        foreach (var request in _requests)
-            request.Dispose();
-        _requests.Clear();
         _allocator.Dispose();
     }
 }

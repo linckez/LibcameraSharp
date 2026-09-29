@@ -7,7 +7,7 @@ namespace LibcameraSharp.Tests.Device;
 public class CameraDeviceTests
 {
     [Fact]
-    public void Enumerate_lists_the_cameras_and_leaves_no_manager_behind()
+    public async Task Enumerate_lists_the_cameras_and_leaves_no_manager_behind()
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
@@ -19,7 +19,7 @@ public class CameraDeviceTests
         Assert.Equal(0, SharedCameraManager.Users);
 
         // Opening takes one use of it, and closing gives that back.
-        using (var camera = CameraDevice.Open(cameras[0].Id))
+        await using (var camera = CameraDevice.Open(cameras[0].Id))
             Assert.Equal(1, SharedCameraManager.Users);
         Assert.Equal(0, SharedCameraManager.Users);
     }
@@ -36,11 +36,11 @@ public class CameraDeviceTests
     }
 
     [Fact]
-    public void Capabilities_report_what_this_camera_advertises()
+    public async Task Capabilities_report_what_this_camera_advertises()
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         var capabilities = camera.Capabilities;
 
         // Numeric controls have a range; rectangles such as ScalerCrop have none.
@@ -59,11 +59,11 @@ public class CameraDeviceTests
     }
 
     [Fact]
-    public void A_setting_the_camera_does_not_have_is_skipped_and_named_once()
+    public async Task A_setting_the_camera_does_not_have_is_skipped_and_named_once()
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         if (camera.Capabilities.Supports(Controls.ExposureTime))
             return;
 
@@ -75,6 +75,9 @@ public class CameraDeviceTests
         {
             camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(8) });
             camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(8) });
+
+            // SetControls returns at once and the camera's loop warns; once it has run this, it has handled both.
+            await camera.Session.CallAsync(() => { });
         }
         finally
         {
@@ -82,6 +85,18 @@ public class CameraDeviceTests
         }
 
         Assert.Single(warnings.ToString().Split('\n'), line => line.Contains("ExposureTime"));
+    }
+
+    /// <summary>Metadata right after opening sets the camera up for frames, as any call that takes options would, rather than failing.</summary>
+    [Fact]
+    public async Task Metadata_right_after_opening_sets_the_camera_up()
+    {
+        Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+
+        await using var camera = CameraDevice.Open();
+        var metadata = await camera.CaptureMetadataAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(metadata.Timestamp);
     }
 }
 
@@ -96,7 +111,7 @@ public class ReadFramesTests
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
         var seen = 0;
@@ -126,7 +141,7 @@ public class ReadFramesTests
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
         await foreach (var frame in camera.ReadFramesAsync(new FrameOptions(), stop.Token))
@@ -142,7 +157,7 @@ public class ReadFramesTests
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
         await foreach (var frame in camera.ReadFramesAsync(

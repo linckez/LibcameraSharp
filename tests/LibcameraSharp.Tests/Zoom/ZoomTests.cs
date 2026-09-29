@@ -42,19 +42,19 @@ public class ZoomTests
     }
 
     [Fact]
-    public void A_camera_without_scaler_crop_says_so_rather_than_failing_obscurely()
+    public async Task A_camera_without_scaler_crop_says_so_rather_than_failing_obscurely()
     {
         // Only cameras that advertise no ScalerCrop, such as the test VM's virtual ones, reach the check.
         // Skipped rather than failed where there is no libcamera at all, e.g. a macOS host.
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
         using var manager = new CameraManager();
-        using var camera = new CameraSession(manager);
+        await using var camera = new CameraSession(manager);
 
-        if (camera.CameraControls.TryGet(LibcameraSharp.Controls.ScalerCrop) is not null)
+        if (camera.Facts.Capabilities.Supports(LibcameraSharp.Controls.ScalerCrop))
             return;                                          // a real Pi: covered on hardware instead
 
-        var refused = Assert.Throws<InvalidOperationException>(() => camera.SetZoom(new RegionOfInterest(0.25, 0.25, 0.5, 0.5)));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => camera.CallAsync(() => camera.SetZoom(new RegionOfInterest(0.25, 0.25, 0.5, 0.5))));
         Assert.Contains("ScalerCrop", refused.Message);
     }
 }

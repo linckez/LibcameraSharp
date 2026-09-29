@@ -16,6 +16,8 @@ using Moq;
 //   overriding the second, but a mock set up on one returns nothing for the other.
 // - An override of ReadFramesAsync needs its own [EnumeratorCancellation]; it isn't inherited.
 // - FramesDropped reads the real camera's count, so a fake that reports drops overrides it too.
+// - DisposeAsync isn't virtual (it runs DisposeAsyncCore, as .NET's dispose pattern has it), so a mock can't set it
+//   up or verify it directly; with Moq, verify Protected().Verify<ValueTask>("DisposeAsyncCore", Times.Once()).
 
 // A camera for a laptop or a CI runner: it replays one picture. Only what the app calls is overridden;
 // anything else throws NotSupportedException.

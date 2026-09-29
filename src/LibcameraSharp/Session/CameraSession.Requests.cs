@@ -1,217 +1,291 @@
 using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
 
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
 {
-    /// <summary>The next completed frame, yours until you dispose it.</summary>
-    public async Task<CapturedFrame> CaptureRequestAsync(CancellationToken cancellationToken = default)
+    // The newest completed frame nobody has taken, kept for the next call. Only with more than one buffer: with
+    // one, keeping it would stall the camera.
+    private Request? _ready;
+    private int _maxQueueLength;
+
+    // Calls waiting for a frame, oldest first; each takes the first frame it accepts.
+    private readonly List<FrameWait> _waits = [];
+
+    // A call waiting for a frame: which frames it accepts (every one, when null), whether it sets an idle camera up
+    // for frames first, and where the frame goes.
+    private sealed class FrameWait(Func<Request, bool>? accepts, bool startIfIdle, CancellationToken cancellationToken)
     {
-        EnsureStarted();
-        var request = await NextCompletedAsync(cancellationToken).ConfigureAwait(false);
-        _allocation!.Acquire(request);
-        return new CapturedFrame(this, request, CameraConfiguration!, _streams, _stopCount, _allocation);
+        public TaskCompletionSource<CapturedFrame> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Func<Request, bool>? Accepts { get; } = accepts;
+
+        public bool StartIfIdle { get; } = startIfIdle;
+
+        public CancellationToken CancellationToken { get; } = cancellationToken;
+
+        public CancellationTokenRegistration Registration { get; set; }
     }
 
-    /// <summary>The next frame's metadata.</summary>
+    /// <summary>
+    /// The next completed frame, yours until you dispose it; with <paramref name="target"/>, the next one taken with
+    /// the controls it names.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The camera is not started.</exception>
+    /// <exception cref="OperationCanceledException">The camera was stopped while waiting, or <paramref name="cancellationToken"/> fired.</exception>
+    public Task<CapturedFrame> NextFrameAsync(ControlsTarget? target = null, CancellationToken cancellationToken = default) =>
+        WaitForFrameAsync(target is { } landed ? request => ControlsLanded(request, landed) : null, cancellationToken);
+
+    /// <summary>
+    /// The frame an autofocus scan ends on, among frames taken with the controls <paramref name="target"/> names:
+    /// the scan has up to <paramref name="framesToStart"/> frames to start, then as long as it takes to end. A scan
+    /// that fails still ends the wait.
+    /// </summary>
+    public Task<CapturedFrame> WaitForFocusScanAsync(ControlsTarget target, int framesToStart, CancellationToken cancellationToken)
+    {
+        var seen = 0;
+        var started = false;
+        return WaitForFrameAsync(request =>
+        {
+            if (!ControlsLanded(request, target))
+                return false;
+            var index = seen++;
+            if (request.Metadata.TryGet(LibcameraSharp.Controls.AfState, out var state) && state == AfState.Scanning)
+            {
+                started = true;
+                return false;
+            }
+            return started || index >= framesToStart;
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// The next frame <paramref name="accepts"/> takes; it runs on the loop, once per completed frame, so it may keep
+    /// state. With <paramref name="startIfIdle"/>, a camera that isn't running is set up for frames with the default
+    /// options first, in the same step, so nothing can stop it in between.
+    /// </summary>
+    internal Task<CapturedFrame> WaitForFrameAsync(Func<Request, bool>? accepts, CancellationToken cancellationToken, bool startIfIdle = false)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var wait = new FrameWait(accepts, startIfIdle, cancellationToken);
+
+        // Cancelling is a message too, so only the loop ever takes a wait out of its list, and a frame handed to a
+        // call that has just given up goes back rather than being lost. Registered before the wait is posted, so the
+        // loop never sees it half made; a cancel that arrives first is caught when the wait is added.
+        wait.Registration = cancellationToken.Register(() => _inbox.Writer.TryWrite(new Work(() => CancelWait(wait), _ => { })));
+        try
+        {
+            Post(new Work(() => AddWait(wait), exception =>
+            {
+                wait.Registration.Dispose();
+                wait.Result.TrySetException(exception);
+            }));
+        }
+        catch
+        {
+            wait.Registration.Dispose();
+            throw;
+        }
+        return wait.Result.Task;
+    }
+
+    /// <summary>The next frame's metadata; a camera that isn't running is set up for frames first.</summary>
     public async Task<Metadata> CaptureMetadataAsync(CancellationToken cancellationToken = default)
     {
-        using var request = await CaptureRequestAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-        return request.Metadata;
+        using var frame = await WaitForFrameAsync(null, cancellationToken, startIfIdle: true).ConfigureAwait(false);
+        return frame.Metadata;
     }
 
-    /// <summary>Skips the next <paramref name="numFrames"/> frames.</summary>
+    /// <summary>Skips the next <paramref name="numFrames"/> frames; a camera that isn't running is set up for frames first.</summary>
     public async Task DropFramesAsync(int numFrames, CancellationToken cancellationToken = default)
     {
         for (var i = 0; i < numFrames; i++)
         {
-            using var request = await CaptureRequestAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            using var frame = await WaitForFrameAsync(null, cancellationToken, startIfIdle: true).ConfigureAwait(false);
         }
     }
 
-    // Runs on libcamera's thread for every completed request: drop failures, keep at most _maxQueueLength ready, recycle the rest.
-    private void OnRequestCompleted(Request request)
+    /// <summary>A holder is done with a frame; the loop queues its buffer again once every holder is. Safe from any thread.</summary>
+    /// <remarks>After the loop has ended there is nothing left to give back to, so this does nothing.</remarks>
+    internal void Release(Request request, BufferAllocation allocation) =>
+        _inbox.Writer.TryWrite(new Released(request, allocation));
+
+    // A wait that can't join the list ends here, with its reason: it is in no list a close or a fault could fail.
+    private void AddWait(FrameWait wait)
     {
-        // The channel is for ActiveCamera users; keep it from growing behind our back.
+        try
+        {
+            ThrowIfClosing();
+            wait.CancellationToken.ThrowIfCancellationRequested();
+            if (!Started)
+            {
+                if (!wait.StartIfIdle)
+                    throw new InvalidOperationException("The camera is not started.");
+
+                // A camera already configured starts as it is: a recording set up for that configuration may be about to
+                // attach, and must find the camera still in it. Only one never configured gets the frame defaults.
+                if (CameraConfiguration is null)
+                    SetUp(new StreamSettings(), new CameraControls(), CameraUse.Frames, reader: null);
+                else
+                    Start();
+            }
+
+            // The frame already waiting, if this call takes it; otherwise the call waits for the next.
+            if (_ready is { } ready && (wait.Accepts?.Invoke(ready) ?? true))
+            {
+                _ready = null;
+                Hand(wait, ready, alreadyHeld: true);
+                return;
+            }
+            _waits.Add(wait);
+        }
+        catch (Exception exception)
+        {
+            wait.Registration.Dispose();
+            if (exception is OperationCanceledException)
+                wait.Result.TrySetCanceled(wait.CancellationToken);
+            else
+                wait.Result.TrySetException(exception);
+        }
+    }
+
+    private void CancelWait(FrameWait wait)
+    {
+        if (_waits.Remove(wait))
+            wait.Result.TrySetCanceled(wait.CancellationToken);
+    }
+
+    // Every waiting call fails with the same reason, as when the camera stops.
+    private void FailWaits(Exception reason)
+    {
+        foreach (var wait in _waits)
+        {
+            wait.Registration.Dispose();
+            wait.Result.TrySetException(reason);
+        }
+        _waits.Clear();
+    }
+
+    // libcamera finished a request. Only a request of the current allocation that it has now counts: our own stop's
+    // cancellations, and completions already in flight when it stopped, arrive after that stop and are ignored.
+    private void OnCompleted(Request request)
+    {
+        // Core keeps a channel of completions for ActiveCamera users; nobody reads it here, so it's kept empty.
         while (_camera.CompletedRequests.TryRead(out _))
         {
         }
+
+        if (_allocation?.SlotOf(request) is not { } slot)
+            return;
+        if (slot.StaleCompletions > 0)
+        {
+            slot.StaleCompletions--;
+            return;
+        }
+        if (!slot.Queued)
+            return;
+        slot.Queued = false;
+
+        // A close has begun: the camera is on its way out, and nothing is restarted or handed over.
+        if (_closing)
+            return;
+
         if (request.Status == RequestStatus.Cancelled)
         {
-            ScheduleTimeoutRestart();                                   // ignored while we stop the camera ourselves
-            return;
-        }
-        if (request.Status != RequestStatus.Complete || _allocation is not { } allocation || !allocation.Owns(request))
-            return;
-        var stream = _streams[SessionStream.Capture];
-        if (request.Buffer(stream).Metadata.Status != FrameStatus.Success)
-        {
-            Recycle(request, _stopCount);
+            Restart("the camera timed out and libcamera cancelled every frame");
             return;
         }
 
-        // Watchers (a recording's encoder) see every completed frame first, on libcamera's thread.
-        if (FrameCompleted is { } watchers)
+        // A frame the sensor didn't fill goes straight back.
+        if (request.Status != RequestStatus.Complete || request.Buffer(_streams[SessionStream.Capture]).Metadata.Status != FrameStatus.Success)
         {
-            var frame = new CapturedFrame(this, request, CameraConfiguration!, _streams, _stopCount, allocation);
-            try
-            {
-                watchers(frame);
-            }
-            catch (Exception exception)
-            {
-                // A throwing watcher must not stall the camera, but silence makes a broken encoder look
-                // like a hang — so the failure is reported and kept.
-                LastFrameError = exception;
-            }
+            Requeue(request, slot);
+            return;
         }
-
-        List<Request> overflow;
-        lock (_lock)
-        {
-            _completed.Add(request);
-            SignalFrame();
-            // A waiting capture takes the oldest and trims afterwards; with nobody waiting, keep at most _max_queue_len.
-            overflow = _waiters > 0 ? [] : TrimCompleted();
-        }
-        foreach (var old in overflow)
-            Recycle(old, _stopCount);
+        Distribute(request, slot);
     }
 
-    // Wakes every waiter and arms the next handoff. Call under _lock.
-    //
-    // Every waiter awaits the *same* task, so completing it has to be paired with replacing it here —
-    // if a waiter installed its own task instead, a second waiter would overwrite the first one's and
-    // the first would never be woken by anything. That is a silent permanent hang, and it was one:
-    // two concurrent captures stranded the older of the two (ConcurrentCaptureTests).
-    private void SignalFrame()
+    // Every recording gets every frame (from the one its controls landed on); then the oldest waiting call that
+    // accepts it takes it, as picamera2's capture steps each take a completed request for themselves
+    // (picamera2.py capture_metadata_). A frame nobody took is kept for the next call, or goes straight back.
+    private void Distribute(Request request, BufferAllocation.Slot slot)
     {
-        _frameArrived.TrySetResult();
-        _frameArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
+        FeedEncoders(request, slot);
 
-    // Drops all but the newest _maxQueueLength completed requests; call under _lock, recycle the result outside it.
-    private List<Request> TrimCompleted()
-    {
-        List<Request> overflow = [];
-        while (_completed.Count > _maxQueueLength)
+        var taker = _waits.FirstOrDefault(wait => wait.Accepts?.Invoke(request) ?? true);
+        if (taker is not null)
         {
-            overflow.Add(_completed[0]);
-            _completed.RemoveAt(0);
+            _waits.Remove(taker);
+            Hand(taker, request, alreadyHeld: false);
         }
-        return overflow;
+        else if (_maxQueueLength > 0)
+        {
+            ReleaseReady();
+            slot.Leases++;
+            _ready = request;
+        }
+
+        if (slot.Leases == 0)
+            Requeue(request, slot);
     }
 
-    private async ValueTask<Request> NextCompletedAsync(CancellationToken cancellationToken)
+    // Gives a frame to a waiting call. Only the loop ever completes a wait it holds (a cancel reaches it as a message
+    // and takes the wait out of the list first), so the hand-over always succeeds.
+    private void Hand(FrameWait wait, Request request, bool alreadyHeld)
     {
-        lock (_lock)
-            _waiters++;
+        if (!alreadyHeld)
+            _allocation!.SlotOf(request)!.Leases++;
+        wait.Registration.Dispose();
+        wait.Result.SetResult(NewFrame(request));
+    }
+
+    // A holder's own handle on a frame of the current allocation; the caller has counted its lease.
+    private CapturedFrame NewFrame(Request request) =>
+        new(this, request, CameraConfiguration!, _streams, _run, _allocation!);
+
+    // The kept frame goes back: a newer one replaced it, or the camera stopped.
+    private void ReleaseReady()
+    {
+        if (_ready is not { } ready)
+            return;
+        _ready = null;
+        OnReleased(ready, _allocation!);
+    }
+
+    // A holder gave a frame back. At zero holders the request goes to the camera again, when the camera runs and
+    // it belongs to the current allocation, whatever the run; an older allocation is freed with its last frame.
+    private void OnReleased(Request request, BufferAllocation allocation)
+    {
+        if (allocation.Disposed || allocation.SlotOf(request) is not { } slot)
+            return;
+        slot.Leases--;
+        if (slot.Leases > 0)
+            return;
+
+        if (!ReferenceEquals(allocation, _allocation))
+        {
+            allocation.FreeIfUnused();
+            EndIfIdle();
+            return;
+        }
+        if (!slot.Queued)
+            Requeue(request, slot);
+    }
+
+    // Queues a request again with whatever controls changed meanwhile. A stopped camera leaves it parked: the next
+    // start queues it. A request libcamera refuses has no call to fail, so the run restarts, once, as after a timeout.
+    private void Requeue(Request request, BufferAllocation.Slot slot)
+    {
+        if (!Started)
+            return;
+        request.Reuse();
         try
         {
-            while (true)
-            {
-                Task wait;
-                List<Request> overflow;
-                Request? taken = null;
-                lock (_lock)
-                {
-                    // Checked under the lock Stop signals under: a waiter arriving after that signal would
-                    // otherwise take the next, never-completed task and hang.
-                    if (!Started && !_restarting)
-                        throw new OperationCanceledException("The camera was stopped while a capture was pending.");
-                    if (_completed.Count > 0)
-                    {
-                        taken = _completed[0];
-                        _completed.RemoveAt(0);
-                        _waiters--;
-                        overflow = _waiters > 0 ? [] : TrimCompleted();
-                    }
-                    else
-                    {
-                        overflow = [];
-                    }
-                    wait = _frameArrived.Task;                          // shared by every waiter; only SignalFrame replaces it
-                }
-                foreach (var old in overflow)
-                    Recycle(old, _stopCount);
-                if (taken is not null)
-                    return taken;
-                await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
-                if (!Started && !_restarting)
-                    throw new OperationCanceledException("The camera was stopped while a capture was pending.");
-            }
+            Enqueue(request, slot);
         }
-        catch
+        catch (LibcameraException exception)
         {
-            lock (_lock)
-                _waiters--;
-            throw;
+            Restart($"libcamera refused a frame's request ({exception.Message})");
         }
-    }
-
-    // A recording holds a frame while it encodes it on its own thread, so the request goes back to the
-    // camera only once every holder is done with it.
-    internal void Hold(Request request)
-    {
-        lock (_lock)
-            _holds[request] = _holds.GetValueOrDefault(request) + 1;
-    }
-
-    // Puts a request back into circulation if the camera is still running the same session; otherwise it just stays parked.
-    // A held request waits for its last holder: each call before that only counts one holder done.
-    internal void Recycle(Request request, int stopCount)
-    {
-        lock (_lock)
-        {
-            if (_holds.TryGetValue(request, out var holders))
-            {
-                if (holders > 1)
-                    _holds[request] = holders - 1;
-                else
-                    _holds.Remove(request);
-                return;
-            }
-            // A run that timed out gets fresh requests when it restarts; this one stays parked.
-            if (!Started || _stopping || stopCount != _stopCount || _restartScheduledFor == _stopCount)
-                return;
-            request.Reuse();
-
-            // Read the version first: a change made while applying is then caught by the next request, never missed.
-            var version = Controls.Version;
-            Controls.CopyTo(request.Controls, _camera.Controls);    // what was set since the last request, once
-
-            // Queued under the lock, so the count matches the order libcamera numbers them in. Only a
-            // request that queued has sent its controls: one that failed leaves them for the next.
-            _camera.QueueRequest(request);
-            Controls.Forget();
-            if (!ReferenceEquals(Controls, _sentControls) || version != _sentVersion)
-                (_controlsFrom, _sentControls, _sentVersion) = (_queuedSinceStart, Controls, version);
-            _queuedSinceStart++;
-        }
-    }
-
-    // A CapturedFrame is done with its request: re-queue it if possible, then let its allocation go.
-    internal void Release(Request request, int stopCount, BufferAllocation allocation)
-    {
-        if (ReferenceEquals(allocation, _allocation))
-            Recycle(request, stopCount);
-        allocation.Release(request);
-    }
-
-    private List<Request> MakeRequests()
-    {
-        // As many requests as the stream with the fewest buffers.
-        var allocation = _allocation!;
-        var count = _streams.Values.Min(s => allocation.Buffers(s).Count);
-        var requests = new List<Request>(count);
-        for (var i = 0; i < count; i++)
-        {
-            var request = allocation.Track(_camera.CreateRequest((ulong)i));
-            foreach (var stream in _streams.Values)
-                request.AddBuffer(stream, allocation.Buffers(stream)[i]);
-            requests.Add(request);
-        }
-        return requests;
     }
 }

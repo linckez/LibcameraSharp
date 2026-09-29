@@ -29,7 +29,7 @@ mention exposure keeps the first one's.
 ## When they take effect
 
 A sensor applies new controls two or three frames after it receives them. Every call that takes
-options — `CapturePhotoAsync`, `RecordTo`, `ReadFramesAsync` — waits for the first frame taken with
+options — `CapturePhotoAsync`, `StartRecordingAsync`, `ReadFramesAsync` — waits for the first frame taken with
 them, so the photo you get is the photo you asked for. Controls that haven't changed aren't sent again. A fixed
 value, such as an 8 ms exposure, is in effect on that frame; an automatic mode (auto exposure, auto
 white balance, autofocus) starts from it and may still be settling. Calls that set the camera up take

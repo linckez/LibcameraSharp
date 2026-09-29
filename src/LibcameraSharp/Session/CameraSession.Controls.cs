@@ -1,19 +1,29 @@
 using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
 
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
 {
+    // libcamera numbers requests in the order they are queued, from 0 after every start
+    // (pipeline_handler.cpp:401,491), so counting as we queue gives each request its number.
+    private long _queuedSinceStart;
+
+    // The number of the first request that carried the latest change to Controls: frames taken from it on have
+    // the new values. The PendingControls and version it was taken from tell a change apart.
+    private long _controlsFrom;
+    private PendingControls? _sentControls;
+    private long _sentVersion;
+
+    // Everything sent since the last configure. Every start list carries it, so a restart (after a timeout, or a
+    // stop and start with the same options) comes back with the exposure, gain and focus it had.
+    private PendingControls _applied;
+
+    /// <summary>Controls to send with the next requests; each value goes out once.</summary>
+    public PendingControls Controls { get; private set; }
+
     /// <summary>Merges <paramref name="controls"/> into the set sent with the next requests.</summary>
     /// <exception cref="ArgumentException">The camera does not advertise one of them.</exception>
-    public void SetControls(PendingControls controls)
-    {
-        lock (_lock)
-        {
-            Controls.SetControls(controls);
-        }
-    }
+    public void SetControls(PendingControls controls) => Controls.SetControls(controls);
 
     /// <summary>
     /// Digital zoom to <paramref name="region"/>, in fractions of the full field.
@@ -80,52 +90,75 @@ internal sealed partial class CameraSession
     }
 
     /// <summary>
-    /// Which request carries the controls sent so far, or the next one when a change hasn't gone out
-    /// yet. A call takes this once and waits for it, so later changes, from anyone, don't make it wait.
+    /// Which request carries the controls sent so far, or the next one when a change hasn't gone out yet. A call
+    /// takes this once and waits for it, so later changes, from anyone, don't make it wait.
     /// </summary>
     internal ControlsTarget TakeControlsTarget()
     {
-        lock (_lock)
-        {
-            var sent = ReferenceEquals(Controls, _sentControls) && Controls.Version == _sentVersion;
-            return new ControlsTarget(_stopCount, sent ? _controlsFrom : _queuedSinceStart);
-        }
+        var sent = ReferenceEquals(Controls, _sentControls) && Controls.Version == _sentVersion;
+        return new ControlsTarget(_run, sent ? _controlsFrom : _queuedSinceStart);
     }
 
     /// <summary>
-    /// True when <paramref name="request"/>'s frame was taken with the controls <paramref name="target"/>
-    /// names. A Raspberry Pi camera reports which request's controls it applied
-    /// (<c>rpi::ControlListSequence</c>), after the sensor's delays; any other camera is assumed to apply
-    /// them with the request that carried them. After a restart, the new run started with the latest
-    /// controls, so any of its frames will do.
+    /// True when <paramref name="request"/>'s frame was taken with the controls <paramref name="target"/> names. A
+    /// Raspberry Pi camera reports which request's controls it applied (<c>rpi::ControlListSequence</c>), after the
+    /// sensor's delays; any other camera is assumed to apply them with the request that carried them. A later run
+    /// started with every control applied so far (see <see cref="TakeStartControls"/>), so any of its frames will do.
     /// </summary>
     internal bool ControlsLanded(Request request, ControlsTarget target)
     {
-        if (target.Run != _stopCount)
+        if (target.Run != _run)
             return true;
         return request.Metadata.TryGet(LibcameraSharp.Controls.Rpi.ControlListSequence, out var applied)
             ? applied >= target.From
             : request.Sequence >= target.From;
     }
 
-    /// <summary>
-    /// The next frame taken with the controls <paramref name="target"/> names; frames still in flight
-    /// from before are returned to the camera. Used by the calls that take options, which promise
-    /// pictures taken with them.
-    /// </summary>
-    internal async Task<CapturedFrame> CaptureRequestWithControlsAsync(ControlsTarget target, CancellationToken cancellationToken)
+    // The start list: everything applied since the configure, plus what's pending. It becomes the new applied set,
+    // and the request numbering starts again, as libcamera's does.
+    private PendingControls TakeStartControls()
     {
-        EnsureStarted();
-        while (true)
+        var initial = _applied.Clone();
+        initial.SetControls(Controls);
+        _applied = initial.Clone();
+        ForgetTriggers(_applied);
+        Controls = new PendingControls(_camera.Controls);
+        (_queuedSinceStart, _controlsFrom, _sentControls, _sentVersion) = (0, 0, Controls, Controls.Version);
+        return initial;
+    }
+
+    // Triggers act once, when sent (an autofocus scan, a precapture sequence), so a restart doesn't send them again.
+    private static void ForgetTriggers(PendingControls applied)
+    {
+        applied.Remove(LibcameraSharp.Controls.AfTrigger);
+        applied.Remove(LibcameraSharp.Controls.Draft.AePrecaptureTrigger);
+    }
+
+    // Hands a request to libcamera with whatever controls changed since the last one; a request that fails to queue
+    // leaves those controls for the next.
+    private void Enqueue(Request request, BufferAllocation.Slot slot)
+    {
+        // The version these controls were sent at, so a waiter can tell whether its change has gone out. A value
+        // libcamera can't take is reported and dropped, or it would fail every request after this one too.
+        var version = Controls.Version;
+        try
         {
-            var request = await NextCompletedAsync(cancellationToken).ConfigureAwait(false);
-            if (!ControlsLanded(request, target))
-            {
-                Recycle(request, _stopCount);
-                continue;
-            }
-            _allocation!.Acquire(request);
-            return new CapturedFrame(this, request, CameraConfiguration!, _streams, _stopCount, _allocation);
+            Controls.CopyTo(request.Controls, _camera.Controls);
         }
+        catch (Exception exception) when (exception is not LibcameraException)
+        {
+            Console.Error.WriteLine($"LibcameraSharp: controls the camera couldn't take were dropped: {exception.Message}");
+            Controls.Forget();
+        }
+
+        _camera.QueueRequest(request);
+        slot.Queued = true;
+
+        _applied.SetControls(Controls);
+        ForgetTriggers(_applied);
+        Controls.Forget();
+        if (!ReferenceEquals(Controls, _sentControls) || version != _sentVersion)
+            (_controlsFrom, _sentControls, _sentVersion) = (_queuedSinceStart, Controls, version);
+        _queuedSinceStart++;
     }
 }

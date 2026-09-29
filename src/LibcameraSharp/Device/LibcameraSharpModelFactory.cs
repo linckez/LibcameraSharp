@@ -176,6 +176,70 @@ public static class LibcameraSharpModelFactory
         return new CameraCapabilities(listed, isMono);
     }
 
+    /// <summary>Creates a <see cref="LibcameraSharp.CameraDescription"/>, what a fake camera's <see cref="CameraDevice.Advanced"/> returns, for tests and fakes.</summary>
+    /// <param name="id">The camera's id.</param>
+    /// <param name="properties">The properties it reports, such as <c>Properties.Model</c>, each with a value of the property's type.</param>
+    /// <param name="controls">The controls it advertises, with their limits.</param>
+    /// <param name="capture">The main stream in effect, or null for a camera not yet set up.</param>
+    /// <param name="preview">The second stream, if any.</param>
+    /// <param name="raw">The raw stream, if any.</param>
+    /// <param name="colourSpace">The colour space of the processed streams.</param>
+    /// <param name="orientation">How the image is rotated and flipped.</param>
+    /// <param name="bufferCount">How many buffers each stream has.</param>
+    /// <exception cref="ArgumentException">A property key is a control, or a control key is a property.</exception>
+    public static CameraDescription CameraDescription(
+        string id = "",
+        IEnumerable<KeyValuePair<ControlKey, object>>? properties = null,
+        IEnumerable<ControlLimits>? controls = null,
+        ConfiguredStream? capture = null,
+        ConfiguredStream? preview = null,
+        ConfiguredStream? raw = null,
+        ColorSpace? colourSpace = null,
+        Orientation orientation = Orientation.Rotate0,
+        int bufferCount = 0)
+    {
+        List<KeyValuePair<ControlKey, object>> reported = [.. properties ?? []];
+        List<ControlLimits> limits = [.. controls ?? []];
+
+        // Properties and controls share one key type, and values are boxed, so a mix-up would only show when someone
+        // reads it back.
+        if (reported.FirstOrDefault(entry => !entry.Key.IsProperty) is { Key: { } control })
+            throw new ArgumentException($"{control.Name} is a control, not a camera property.", nameof(properties));
+        foreach (var (key, value) in reported)
+        {
+            if (value?.GetType() != key.ValueType)
+                throw new ArgumentException($"{key.Name} holds a {key.ValueType.Name}, not a {value?.GetType().Name ?? "null"}.", nameof(properties));
+        }
+        if (limits.FirstOrDefault(entry => entry.Control.IsProperty) is { } property)
+            throw new ArgumentException($"{property.Control.Name} is a camera property, not a control.", nameof(controls));
+
+        return new CameraDescription(id, reported, limits, capture, preview, raw, colourSpace, orientation, bufferCount);
+    }
+
+    /// <summary>Creates <see cref="LibcameraSharp.ControlLimits"/> for a fake <see cref="LibcameraSharp.CameraDescription"/>.</summary>
+    /// <param name="control">The control.</param>
+    /// <param name="min">Its smallest value.</param>
+    /// <param name="max">Its largest value.</param>
+    /// <param name="default">Its default, or null when it has none.</param>
+    /// <exception cref="ArgumentException"><paramref name="control"/> is a camera property.</exception>
+    public static ControlLimits ControlLimits(ControlKey control, object min, object max, object? @default = null)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        ArgumentNullException.ThrowIfNull(min);
+        ArgumentNullException.ThrowIfNull(max);
+        if (control.IsProperty)
+            throw new ArgumentException($"{control.Name} is a camera property, not a control.", nameof(control));
+        return new ControlLimits(control, min, max, @default);
+    }
+
+    /// <summary>Creates a <see cref="LibcameraSharp.ConfiguredStream"/> for a fake <see cref="LibcameraSharp.CameraDescription"/>.</summary>
+    /// <param name="size">Its size in pixels.</param>
+    /// <param name="format">Its pixel format.</param>
+    /// <param name="stride">Bytes from one row to the next.</param>
+    /// <param name="frameSize">Bytes in one frame.</param>
+    public static ConfiguredStream ConfiguredStream(Size size, PixelFormat format, uint stride = 0, uint frameSize = 0) =>
+        new(size, format, stride, frameSize);
+
     // Each plane's narrowest stride and its rows. Packed RGB is one plane; planar YUV has its chroma at half
     // height, and at half width too when U and V are separate planes.
     private static (int Stride, int Rows)[] Planes(PixelFormat format, Size size)

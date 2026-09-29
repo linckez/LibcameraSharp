@@ -6,16 +6,29 @@ namespace LibcameraSharp;
 internal sealed partial class CameraSession
 {
     /// <summary>Every readout the sensor supports, with the frame rate and field of view each allows.</summary>
-    /// <remarks>Found by configuring the camera for each mode once, which forgets pending controls; cached after the first call.</remarks>
-    /// <exception cref="InvalidOperationException">The camera is running.</exception>
-    public IReadOnlyList<SensorMode> SensorModes
+    /// <remarks>
+    /// Found by configuring the camera for each mode once, so the first call stops a running camera (captures still
+    /// waiting fail with <see cref="OperationCanceledException"/>) and forgets pending controls; cached after that.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A recording is running, and probing would reconfigure the camera under it.</exception>
+    public Task<IReadOnlyList<SensorMode>> ProbeSensorModesAsync() => CallAsync(() =>
+    {
+        ThrowIfClosing();
+        return SensorModes;
+    });
+
+    // On the loop: probes once, then answers from the cache.
+    private IReadOnlyList<SensorMode> SensorModes
     {
         get
         {
             if (_sensorModes is not null)
                 return _sensorModes;
-            if (Started)
-                throw new InvalidOperationException("Sensor modes are probed by reconfiguring, so the camera must be stopped first.");
+
+            // A running recording keeps the size and format it started with; anything else is stopped for the probe.
+            if (_feeds.Count > 0)
+                throw new InvalidOperationException("Stop the recording before probing sensor modes: probing reconfigures the camera.");
+            Stop();
 
             var previous = CameraConfiguration;
             var modes = new List<SensorMode>();

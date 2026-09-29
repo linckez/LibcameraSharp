@@ -7,7 +7,7 @@ Everything is in the `LibcameraSharp` namespace. The pattern: open a `CameraDevi
 ```csharp
 using LibcameraSharp;
 
-using CameraDevice camera = CameraDevice.Open();
+await using CameraDevice camera = CameraDevice.Open();
 
 Photo photo = await camera.CapturePhotoAsync(new PhotoOptions
 {
@@ -15,8 +15,9 @@ Photo photo = await camera.CapturePhotoAsync(new PhotoOptions
 });
 await photo.SaveAsync("photo.jpg");
 
-await using (VideoRecording recording = camera.RecordTo("clip.mp4"))
-    await Task.Delay(TimeSpan.FromSeconds(10));
+VideoRecording recording = await camera.StartRecordingAsync("clip.mp4");
+await Task.Delay(TimeSpan.FromSeconds(10));
+await recording.StopAsync();
 
 await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions(), ct))
     using (frame)                                        // frames are the camera's buffers: always dispose
@@ -25,7 +26,8 @@ await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions(), ct
 
 Things an assistant gets wrong without being told:
 
-- `camera.RecordTo(...)` returns a `VideoRecording`; disposing it finalises the file.
+- `camera.StartRecordingAsync(...)` returns a `VideoRecording`; `StopAsync()` finalises the file and throws `IOException` if writing failed. Disposing stops it too but never throws.
+- `CameraDevice` and `VideoRecording` are `IAsyncDisposable` only: `await using`, never `using`.
 - `Exposure = TimeSpan.Zero` and `Gain = 0` mean "back to automatic"; `null` means "don't send".
 - Rows can be padded: use `frame.Stride(i)`, not the width.
 - `BGR888` is stored R, G, B in memory (libcamera names read backwards).

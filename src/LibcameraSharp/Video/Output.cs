@@ -75,6 +75,5 @@ internal abstract class Output : IDisposable
     {
         if (Recording)
             Stop();
-        GC.SuppressFinalize(this);
     }
 }

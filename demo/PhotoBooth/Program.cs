@@ -33,7 +33,7 @@ if (cameraNumber >= cameras.Count)
 }
 
 // 2. Open one and look at what it can do.
-using var camera = CameraDevice.Open(cameras[cameraNumber].Id);
+await using var camera = CameraDevice.Open(cameras[cameraNumber].Id);
 Console.WriteLine($"\nopened {cameras[cameraNumber].Model}{(camera.Capabilities.IsMono ? " (monochrome)" : "")}");
 
 foreach (ControlKey control in new ControlKey[] { Controls.ExposureTime, Controls.AnalogueGain, Controls.LensPosition })

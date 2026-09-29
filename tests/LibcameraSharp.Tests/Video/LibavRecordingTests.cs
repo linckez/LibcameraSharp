@@ -1,3 +1,4 @@
+using LibcameraSharp.Tests.Capture;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -25,14 +26,14 @@ public class LibavRecordingTests(ITestOutputHelper output)
 
         using var manager = new CameraManager();
         SkipOnTheVirtualCamera(manager);
-        using var session = new CameraSession(manager);
+        await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
         using (var container = new ContainerOutput(File.Create(path), "mp4", ownsStream: true))
         {
-            session.Configure(session.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
-            session.StartRecording(encoder, container);
+            await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
+            await session.StartRecordingAsync(encoder, container);
             await WaitForFramesAsync(session, encoder, 12);
-            session.StopRecording();
+            await session.StopRecordingAsync(encoder);
         }
 
         var probe = Probe(path);
@@ -62,14 +63,14 @@ public class LibavRecordingTests(ITestOutputHelper output)
 
         using var manager = new CameraManager();
         SkipOnTheVirtualCamera(manager);
-        using var session = new CameraSession(manager);
+        await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
         using (var container = new ContainerOutput(buffer, "mpegts"))
         {
-            session.Configure(session.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
-            session.StartRecording(encoder, container);
+            await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
+            await session.StartRecordingAsync(encoder, container);
             await WaitForFramesAsync(session, encoder, 15);
-            session.StopRecording();
+            await session.StopRecordingAsync(encoder);
         }
 
         var bytes = buffer.ToArray();
@@ -94,14 +95,14 @@ public class LibavRecordingTests(ITestOutputHelper output)
 
         using var manager = new CameraManager();
         SkipOnTheVirtualCamera(manager);
-        using var session = new CameraSession(manager);
+        await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
         using (var container = new ContainerOutput(forwardOnly, "mp4"))
         {
-            session.Configure(session.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
-            session.StartRecording(encoder, container);
+            await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
+            await session.StartRecordingAsync(encoder, container);
             await WaitForFramesAsync(session, encoder, 15);
-            session.StopRecording();
+            await session.StopRecordingAsync(encoder);
         }
 
         var bytes = buffer.ToArray();
@@ -121,14 +122,14 @@ public class LibavRecordingTests(ITestOutputHelper output)
 
         using var manager = new CameraManager();
         SkipOnTheVirtualCamera(manager);
-        using var session = new CameraSession(manager);
+        await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
         using (var container = new ContainerOutput(buffer, "mp4"))
         {
-            session.Configure(session.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
-            session.StartRecording(encoder, container);
+            await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
+            await session.StartRecordingAsync(encoder, container);
             await WaitForFramesAsync(session, encoder, 15);
-            session.StopRecording();
+            await session.StopRecordingAsync(encoder);
         }
 
         var bytes = buffer.ToArray();
@@ -222,10 +223,7 @@ public class LibavRecordingTests(ITestOutputHelper output)
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         while (encoder.FramesEncoded < frames)
         {
-            if (session.LastFrameError is { } error)
-                throw new InvalidOperationException($"encoding failed after {encoder.FramesEncoded} frames", error);
             await Task.Delay(20, timeout.Token);
         }
-        Assert.Null(session.LastFrameError);
     }
 }

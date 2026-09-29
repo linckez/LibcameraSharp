@@ -4,43 +4,36 @@ namespace LibcameraSharp;
 
 public partial class CameraDevice
 {
-    /// <summary>Starts recording to a file, until the returned recording is disposed.</summary>
+    /// <summary>Starts recording to a file; it records until you stop the returned recording.</summary>
     /// <remarks>The extension picks the container: <c>.mp4</c>, <c>.mkv</c> or <c>.ts</c>; anything else gets the codec's own bytes.</remarks>
-    public virtual VideoRecording RecordTo(string path, VideoOptions? options = null)
+    /// <returns>The recording, once the camera is recording.</returns>
+    /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
+    public virtual Task<VideoRecording> StartRecordingAsync(string path, VideoOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        return Record(options ?? new VideoOptions(), chosen => VideoContainer.ForPath(path).WrapFile(path, chosen));
+        options ??= new VideoOptions();
+        return RunExclusiveAsync(() => OpenRecordingAsync(options, chosen => VideoContainer.ForPath(path).WrapFile(path, chosen)), cancellationToken);
     }
 
-    /// <summary>Starts recording to a stream, such as an HTTP response, a socket or a pipe.</summary>
+    /// <summary>Starts recording to a stream, such as an HTTP response, a socket or a pipe; it records until you stop the returned recording.</summary>
     /// <remarks>
-    /// A destination slower than the camera slows the camera: recordings never drop frames. Disposing the
+    /// A destination slower than the camera slows the camera: recordings never drop frames. Stopping the
     /// recording closes <paramref name="destination"/>.
     /// </remarks>
+    /// <returns>The recording, once the camera is recording.</returns>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public virtual VideoRecording RecordTo(Stream destination, VideoOptions? options = null, VideoContainer? container = null)
+    public virtual Task<VideoRecording> StartRecordingAsync(Stream destination, VideoOptions? options = null, VideoContainer? container = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(destination);
-        return Record(options ?? new VideoOptions(),
-            chosen => container?.Wrap(destination, chosen) ?? new FileOutput(destination, ownsStream: true));
+        options ??= new VideoOptions();
+        return RunExclusiveAsync(() => OpenRecordingAsync(options,
+            chosen => container?.Wrap(destination, chosen) ?? new FileOutput(destination, ownsStream: true)), cancellationToken);
     }
 
-    // Sets the camera up for the recording, then opens its output, so a setup that fails leaves no file behind.
-    // One call sets the camera up at a time.
-    private VideoRecording Record(VideoOptions options, Func<VideoOptions, Output> makeOutput)
-    {
-        _calls.Wait();
-        try
-        {
-            return StartRecording(options, makeOutput);
-        }
-        finally
-        {
-            _calls.Release();
-        }
-    }
-
-    private VideoRecording StartRecording(VideoOptions options, Func<VideoOptions, Output> makeOutput)
+    // A recording's start is one job, like a photo. It sets the camera up for the recording, then opens its output,
+    // so a setup that fails leaves no file behind.
+    private async Task<VideoRecording> OpenRecordingAsync(VideoOptions options, Func<VideoOptions, Output> makeOutput)
     {
         var encoder = VideoContainer.CreateEncoder(options.Codec);
         if (encoder is LibavH264Encoder h264)
@@ -61,25 +54,43 @@ public partial class CameraDevice
             {
                 ColourSpace = CameraSession.VideoColourSpace(streams.CaptureSize ?? CameraSession.DefaultVideoSize, options.Codec == VideoCodec.Mjpeg),
             };
-        ApplyOptions(streams, options.Controls, CameraUse.Video);
+        var setup = await Session.SetUpAsync(streams, options.Controls, CameraUse.Video).ConfigureAwait(false);
 
-        // The recording begins with the first frame taken with these controls.
-        if (!Session.Started)
-            Session.Start();
-        var target = Session.TakeControlsTarget();
-        encoder.StartWhen = frame => Session.ControlsLanded(frame.Request, target);
-        var output = makeOutput(options);
-
-        // A recording that fails to start closes its output and, when no other recording runs, stops the camera.
+        // Opening the output, the encoder and the container is file I/O and libav, done here rather than on the camera's
+        // loop. The loop then feeds it from the first frame taken with these controls. A recording that fails to start
+        // closes its output and, when no other recording runs, stops the camera.
+        Output? output = null;
         try
         {
-            Session.StartRecording(encoder, output, quality: options.Quality);
+            output = makeOutput(options);
+            CameraSession.PrepareEncoder(encoder, setup.Configuration, setup.FrameRate);
+            encoder.Output = output;
+            encoder.Start(options.Quality);
+            await Session.AttachEncoderAsync(encoder, setup.Target).ConfigureAwait(false);
         }
         catch
         {
-            output.Dispose();
-            if (Session.Encoders.Count == 0)
-                Session.Stop();
+            // Each step runs whatever the one before it did, and the failure that stopped the start is what's thrown.
+            try
+            {
+                encoder.Stop();
+            }
+            catch (Exception)
+            {
+                // Closing an encoder that failed to start can fail too.
+            }
+            finally
+            {
+                output?.Dispose();
+            }
+            try
+            {
+                await Session.StopIfIdleAsync().ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // The camera closing meanwhile, say; the failure to report is the one that stopped the start.
+            }
             throw;
         }
 
@@ -95,12 +106,12 @@ public partial class CameraDevice
     public virtual async Task RecordToAsync(Stream destination, VideoOptions? options = null,
         VideoContainer? container = null, CancellationToken cancellationToken = default)
     {
-        var recording = RecordTo(destination, options, container);
         try
         {
-            // Record until the caller cancels, or writing fails.
+            // Record until the caller cancels, or writing fails; stopping reports the failure, if there was one.
+            var recording = await StartRecordingAsync(destination, options, container, cancellationToken).ConfigureAwait(false);
             await Task.WhenAny(Task.Delay(Timeout.Infinite, cancellationToken), recording.WhenFailed).ConfigureAwait(false);
-            await recording.DisposeAsync().ConfigureAwait(false);
+            await recording.StopAsync().ConfigureAwait(false);
         }
         catch (Exception exception) when (DestinationWentAway(exception, cancellationToken))
         {
@@ -109,10 +120,11 @@ public partial class CameraDevice
     }
 
     // Only a destination that went away ends a recording quietly: the caller's own cancellation, or a
-    // connection reset, aborted or shut down (a broken pipe). Anything else is a failure and is thrown.
+    // connection reset, aborted or shut down (a broken pipe). Anything else is a failure and is thrown. Stopping reports
+    // a cancelled write wrapped in an IOException, so the cancellation is found inside it.
     private static bool DestinationWentAway(Exception exception, CancellationToken cancellationToken) => exception switch
     {
-        OperationCanceledException => cancellationToken.IsCancellationRequested,
+        OperationCanceledException or IOException { InnerException: OperationCanceledException } => cancellationToken.IsCancellationRequested,
         IOException { InnerException: SocketException { SocketErrorCode: SocketError.ConnectionReset or SocketError.ConnectionAborted or SocketError.Shutdown } } => true,
         _ => false,
     };

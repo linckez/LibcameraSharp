@@ -14,7 +14,7 @@ see [Raspberry Pi setup](raspberry-pi.md).
 ```csharp
 using LibcameraSharp;
 
-using CameraDevice camera = CameraDevice.Open();            // the first camera
+await using CameraDevice camera = CameraDevice.Open();            // the first camera
 
 Photo photo = await camera.CapturePhotoAsync();
 await photo.SaveAsync("photo.jpg");                          // .png and .bmp work the same way
@@ -69,8 +69,12 @@ LibcameraLog.SetLevel(LogLevel.Error);         // errors only, from here on
 
 ## Cleaning up
 
-Dispose the `CameraDevice` to release the camera for other processes. Only one process can hold a
+Dispose the `CameraDevice` (`await using`; it has no synchronous `Dispose`) to release the camera for other processes. Only one process can hold a
 camera at a time; a second gets `CameraBusyException`.
+
+Registered as a singleton in an ASP.NET Core or Generic Host app, the camera is disposed for you when the app
+stops. A service provider you build and dispose yourself needs `await using` too: disposing it synchronously
+throws `InvalidOperationException` for a service that can only be disposed asynchronously.
 
 ## Testing without a camera
 

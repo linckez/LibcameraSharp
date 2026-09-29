@@ -58,13 +58,15 @@ camera.Stop();
 
 ## From a CameraDevice
 
-`camera.Advanced` on a `CameraDevice` is its live `ActiveCamera`, the one the `CameraDevice` is
-driving. Read from it (its properties, the controls it advertises with their ranges, its configuration),
-but leave starting, stopping, configuring and requests to the `CameraDevice`: it reads the completed
-requests itself, and doesn't know about changes made behind its back.
+`camera.Advanced` on a `CameraDevice` is a read-only description of the camera it drives: every property
+libcamera reports, the limits of every control it advertises (as libcamera stores them, such as a
+rectangle for `ScalerCrop`), and the configuration in effect. It's taken again after every reconfigure,
+so read it again rather than keeping one. To start, stop, configure or queue requests yourself, open the
+camera with this package's `CameraManager` instead of a `CameraDevice`.
 
 ```csharp
-string model = device.Advanced.Properties.Get(Properties.Model);
+if (device.Advanced.TryGetProperty(Properties.Model, out string model))
+    Console.WriteLine(model);
 ```
 
 ## Rules libcamera enforces

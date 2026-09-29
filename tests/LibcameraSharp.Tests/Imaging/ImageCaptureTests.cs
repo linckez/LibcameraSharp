@@ -20,7 +20,7 @@ public class ImageCaptureTests
         var source = FindRepoFile(Path.Combine("tests", "vm", "virtual-frame.jpg"));
         Assert.SkipWhen(source is null, "tests/vm/virtual-frame.jpg not found from the test directory");
 
-        using var camera = CameraDevice.Open(camera0.Id);
+        await using var camera = CameraDevice.Open(camera0.Id);
         var streams = new StreamSettings { CaptureSize = new Size(640, 480) };
         var dir = Directory.CreateTempSubdirectory().FullName;
         var jpeg = await camera.CapturePhotoAsync(new PhotoOptions { Streams = streams }, Ct);

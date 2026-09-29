@@ -1,18 +1,17 @@
 # Video
 
 ```csharp
-using CameraDevice camera = CameraDevice.Open();
+await using CameraDevice camera = CameraDevice.Open();
 
-await using (VideoRecording recording = camera.RecordTo("clip.mp4"))
-{
-    await Task.Delay(TimeSpan.FromSeconds(10));
-    Console.WriteLine($"{recording.FrameCount} frames");
-}
+VideoRecording recording = await camera.StartRecordingAsync("clip.mp4");
+await Task.Delay(TimeSpan.FromSeconds(10));
+await recording.StopAsync();
+Console.WriteLine($"{recording.FrameCount} frames");
 ```
 
-Recording runs until you dispose it. Disposing writes the end of the file, so a recording that is
-never disposed is a file that will not play. If writing failed along the way — a full disk, say —
-disposing throws that failure.
+Recording runs until you stop it. Stopping writes the end of the file, so a recording that is never
+stopped is a file that will not play. If writing failed along the way — a full disk, say — `StopAsync`
+throws that failure as an `IOException`. Disposing a recording stops it too, but never throws.
 
 ## Options
 
@@ -24,7 +23,7 @@ var clip = new VideoOptions
     Quality  = Quality.High,
 };
 
-await using var recording = camera.RecordTo("clip.mp4", clip);
+VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", clip);
 ```
 
 The default is H.264 at 1280×720, focusing continuously on a camera with autofocus. `Quality` trades

@@ -6,23 +6,25 @@ namespace LibcameraSharp;
 /// <summary>
 /// A frame the camera has finished, with the configuration it was captured under. Read it with
 /// <see cref="CopyPixels"/>, <see cref="MakeBuffer"/> or <see cref="Metadata"/>, then
-/// <see cref="Dispose"/> to hand the buffer back to the camera (which re-queues it if still running).
+/// <see cref="Dispose"/> to hand the buffer back to the camera.
 /// </summary>
-/// <remarks>The request is re-queued only if the camera has not been stopped or reconfigured since it completed.</remarks>
+/// <remarks>
+/// One frame can have several holders at once (a frame loop and a recording, say), each with its own
+/// <see cref="CapturedFrame"/>; the camera gets the buffer back once all of them are disposed.
+/// </remarks>
 internal sealed class CapturedFrame : IDisposable
 {
     private readonly CameraSession _camera;
-    private readonly int _stopCount;
     private readonly BufferAllocation _allocation;
     private Request? _request;
 
-    internal CapturedFrame(CameraSession camera, Request request, SessionConfiguration config, IReadOnlyDictionary<SessionStream, Stream> streams, int stopCount, BufferAllocation allocation)
+    internal CapturedFrame(CameraSession camera, Request request, SessionConfiguration config, IReadOnlyDictionary<SessionStream, Stream> streams, int run, BufferAllocation allocation)
     {
         _camera = camera;
         _request = request;
         Config = config;
         Streams = streams;
-        _stopCount = stopCount;
+        Run = run;
         _allocation = allocation;
     }
 
@@ -33,8 +35,8 @@ internal sealed class CapturedFrame : IDisposable
     public IReadOnlyDictionary<SessionStream, Stream> Streams { get; }
 
     /// <summary>The underlying libcamera request, for the lower-level API.</summary>
-    /// <exception cref="ObjectDisposedException">The request has been released.</exception>
-    public Request Request => _request ?? throw new ObjectDisposedException(nameof(CapturedFrame));
+    /// <exception cref="ObjectDisposedException">The frame has been disposed, or the camera closed, which freed its buffer.</exception>
+    public Request Request => _request is { } request && !_allocation.Closed ? request : throw new ObjectDisposedException(nameof(CapturedFrame));
 
     /// <summary>The frame's sequence number, from the buffer libcamera filled; gaps mean dropped frames.</summary>
     /// <remarks>Not <c>Request.Sequence</c>, which has no gaps when the application is the slow one.</remarks>
@@ -68,28 +70,14 @@ internal sealed class CapturedFrame : IDisposable
     public Metadata Metadata => new(Request.Metadata);
 
     /// <summary>The camera run this frame came from; it changes each time the camera is stopped and started.</summary>
-    internal int Run => _stopCount;
+    internal int Run { get; }
 
-    /// <summary>
-    /// Another handle on the same frame, for a reader on another thread: the buffer goes back to the
-    /// camera only when this one and every other holder have been disposed.
-    /// </summary>
-    internal CapturedFrame Share()
-    {
-        var request = Request;
-        _camera.Hold(request);
-        _allocation.Acquire(request);
-        return new CapturedFrame(_camera, request, Config, Streams, _stopCount, _allocation);
-    }
-
-    /// <summary>Returns the buffer to the camera; it is re-queued if the camera is still running with this configuration.</summary>
+    /// <summary>Gives the frame's buffer back; the camera queues it again once every holder has.</summary>
     public void Dispose()
     {
-        if (_request is null)
-            return;
-        var request = _request;
-        _request = null;
-        _camera.Release(request, _stopCount, _allocation);
+        // Taken atomically, so two threads disposing the same frame give its lease back once.
+        if (Interlocked.Exchange(ref _request, null) is { } request)
+            _camera.Release(request, _allocation);
     }
 
     private Stream StreamFor(SessionStream stream) =>

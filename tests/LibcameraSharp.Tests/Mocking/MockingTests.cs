@@ -146,7 +146,7 @@ public class MockingTests
     }
 
     [Fact]
-    public void A_camera_made_for_mocking_holds_no_camera()
+    public async Task A_camera_made_for_mocking_holds_no_camera()
     {
         var before = SharedCameraManager.Users;
         var camera = new FakeCamera();
@@ -155,7 +155,7 @@ public class MockingTests
         Assert.Throws<NotSupportedException>(() => camera.SetControls(new CameraControls()));
 
         // Disposing gives back nothing it never took, so a real camera open elsewhere keeps its manager.
-        camera.Dispose();
+        await camera.DisposeAsync();
         Assert.Equal(before, SharedCameraManager.Users);
     }
 
@@ -177,7 +177,7 @@ public class MockingTests
     {
         var notVirtual = typeof(CameraDevice)
             .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-            .Where(method => !method.IsVirtual && method.Name != nameof(IDisposable.Dispose))
+            .Where(method => !method.IsVirtual && method.Name != nameof(IAsyncDisposable.DisposeAsync))
             .Select(method => method.Name);
 
         Assert.Empty(notVirtual);
@@ -185,8 +185,9 @@ public class MockingTests
 
     private sealed class FakeCamera : CameraDevice
     {
-        public override VideoRecording RecordTo(Stream destination, VideoOptions? options = null, VideoContainer? container = null) =>
-            new FakeRecording();
+        public override Task<VideoRecording> StartRecordingAsync(Stream destination, VideoOptions? options = null,
+            VideoContainer? container = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<VideoRecording>(new FakeRecording());
     }
 
     private sealed class FakeRecording : VideoRecording;
