@@ -2,10 +2,6 @@ namespace LibcameraSharp;
 
 public partial class CameraDevice
 {
-    /// <summary>Takes a photograph with the camera's default photo settings.</summary>
-    public virtual Task<Photo> CapturePhotoAsync(CancellationToken cancellationToken = default) =>
-        CapturePhotoAsync(new PhotoOptions(), cancellationToken);
-
     /// <summary>
     /// Takes a photograph with these options. The same options twice don't reconfigure the camera, except on a
     /// camera with autofocus: unless the options set <see cref="CameraControls.Focus"/>, each photo first scans in a
@@ -13,9 +9,13 @@ public partial class CameraDevice
     /// </summary>
     /// <returns>The photo, with its pixels, what the camera did, and the raw image when asked for.</returns>
     /// <exception cref="InvalidOperationException">A recording is running: a photo would reconfigure the camera under it.</exception>
-    public virtual Task<Photo> CapturePhotoAsync(PhotoOptions options, CancellationToken cancellationToken = default)
+    /// <param name="options">How to take the photo; the camera's default photo settings when null. An override gets null when the caller passed none.</param>
+    /// <param name="cancellationToken">Cancels the capture.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
+    public virtual Task<Photo> CapturePhotoAsync(PhotoOptions? options = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        options ??= new PhotoOptions();
+        options.Controls.ThrowIfInvalid(nameof(options));
 
         // A photo is one job, from its focus scan to its frame, so no other call's setup can land in between.
         return RunExclusiveAsync(() => TakePhotoAsync(options, cancellationToken), cancellationToken);

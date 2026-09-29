@@ -108,7 +108,7 @@ static class Champions
         await shot.SaveAsync(path: "shot.jpg", cancellationToken: ct);
 
         RawImage raw = shot.Raw ?? throw new InvalidOperationException("this camera has no raw stream");
-        await raw.SaveAsync(path: "shot.dng", cancellationToken: ct);
+        raw.Save("shot.dng");
         ReadOnlyMemory<byte> bayer = raw.Bytes;
         Console.WriteLine(bayer.Length);
     }

@@ -75,7 +75,7 @@ public sealed record CameraControls
     /// Takes effect only with fixed white balance gains (<see cref="LibcameraSharp.WhiteBalance.Manual"/>)
     /// set in the same options: the camera ignores a matrix that arrives while white balance is automatic.
     /// </remarks>
-    public float[]? ColourCorrectionMatrix { get; init; }
+    public ColourCorrectionMatrix? ColourCorrectionMatrix { get; init; }
 
     /// <summary>How far autofocus searches: the whole range, or only near or far.</summary>
     public AfRange? AutofocusRange { get; init; }
@@ -84,7 +84,21 @@ public sealed record CameraControls
     public AfSpeed? AutofocusSpeed { get; init; }
 
     /// <summary>The parts of the scene autofocus looks at, in fractions of the full field like <see cref="Zoom"/>.</summary>
+    /// <remarks>
+    /// Options compare lists by reference, so the same windows in a new list count as a change: the controls are sent
+    /// again, and the camera isn't reconfigured.
+    /// </remarks>
     public IReadOnlyList<RegionOfInterest>? AutofocusWindows { get; init; }
+
+    // Values that can't be right whatever the camera: a frame rate or region out of range. What only the camera knows,
+    // such as its exposure limits, is left to it, and skipped with a warning when it can't take a value.
+    internal void ThrowIfInvalid(string paramName)
+    {
+        FrameRate?.ThrowIfInvalid(paramName);
+        Zoom?.ThrowIfInvalid(paramName);
+        foreach (var window in AutofocusWindows ?? [])
+            window.ThrowIfInvalid(paramName);
+    }
 
     /// <summary>
     /// Writes these controls onto a pending set, sending only what was given. Controls the camera doesn't
@@ -166,7 +180,7 @@ public sealed record CameraControls
             }
         }
         if (ColourCorrectionMatrix is { } matrix)
-            Put(Controls.ColourCorrectionMatrix, matrix);
+            Put(Controls.ColourCorrectionMatrix, matrix.ToArray());
         if (AutofocusRange is { } range)
             Put(Controls.AfRange, range);
         if (AutofocusSpeed is { } speed)

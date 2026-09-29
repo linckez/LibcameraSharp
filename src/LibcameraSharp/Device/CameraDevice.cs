@@ -124,9 +124,11 @@ public partial class CameraDevice : IAsyncDisposable
     /// Changes controls on a camera that is already running, such as from a slider over a live view.
     /// Returns at once; they go out with the next requests. A later call that takes options sends its own controls.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in <paramref name="controls"/> is out of range.</exception>
     public virtual void SetControls(CameraControls controls)
     {
         ArgumentNullException.ThrowIfNull(controls);
+        controls.ThrowIfInvalid(nameof(controls));
         ThrowIfDisposed();
         Session.SetControls(controls);
     }
@@ -135,9 +137,11 @@ public partial class CameraDevice : IAsyncDisposable
     /// Skips the next <paramref name="count"/> frames. A camera that isn't running is started first: set up for frames
     /// with the default options if nothing has set it up yet, else as it was last set up.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is negative.</exception>
     /// <exception cref="OperationCanceledException">Another call stopped or reconfigured the camera meanwhile, or <paramref name="cancellationToken"/> fired.</exception>
     public virtual Task DropFramesAsync(int count, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
         ThrowIfDisposed();
         return Session.DropFramesAsync(count, cancellationToken);
     }

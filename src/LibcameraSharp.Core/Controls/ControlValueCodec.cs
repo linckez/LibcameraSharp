@@ -28,7 +28,7 @@ internal static unsafe class ControlValueCodec
         if (key.Type == ControlType.String)
             return (T)(object)Encoding.UTF8.GetString((byte*)data, count);
         if (isArray != typeof(T).IsArray)
-            throw new LibcameraException($"read {key.Name}: the stored value is {(isArray ? "an array" : "a scalar")} but {typeof(T).Name} was requested");
+            throw new InvalidCastException($"{key.Name}: the stored value is {(isArray ? "an array" : "a scalar")} but {typeof(T).Name} was requested.");
         if (isArray)
             return (T)(object)ReadArray(key.Type, (void*)data, count);
         return ReadScalar<T>(key.Type, (void*)data);
@@ -89,7 +89,7 @@ internal static unsafe class ControlValueCodec
             ControlType.Rectangle => Put(bytes, (Rectangle)value),
             ControlType.Size => Put(bytes, (Size)value),
             ControlType.Point => Put(bytes, (Point)value),
-            _ => throw new LibcameraException($"unsupported control type {key.Type}"),
+            _ => throw new NotSupportedException($"{key.Name}: control type {key.Type} isn't supported."),
         };
         fixed (byte* p = bytes)
             NativeMethods.libcamera_control_value_set(target, (libcamera_control_type)key.Type, p, false, 1);
@@ -105,7 +105,7 @@ internal static unsafe class ControlValueCodec
     {
         var stored = (ControlType)NativeMethods.libcamera_control_value_type(value);
         if (stored != key.Type)
-            throw new LibcameraException($"read {key.Name}: stored type is {stored}, key type is {key.Type}");
+            throw new InvalidCastException($"{key.Name}: the stored value is a {stored}, but the key is a {key.Type}.");
         return ((nint)NativeMethods.libcamera_control_value_get(value),
                 (int)NativeMethods.libcamera_control_value_num_elements(value),
                 NativeMethods.libcamera_control_value_is_array(value));
@@ -124,7 +124,7 @@ internal static unsafe class ControlValueCodec
         ControlType.Rectangle => Unsafe.BitCast<Rectangle, T>(*(Rectangle*)data),
         ControlType.Size => Unsafe.BitCast<Size, T>(*(Size*)data),
         ControlType.Point => Unsafe.BitCast<Point, T>(*(Point*)data),
-        _ => throw new LibcameraException($"unsupported control type {type}"),
+        _ => throw new NotSupportedException($"Control type {type} isn't supported."),
     };
 
     private static Array ReadArray(ControlType type, void* data, int count) => type switch
@@ -139,7 +139,7 @@ internal static unsafe class ControlValueCodec
         ControlType.Rectangle => new ReadOnlySpan<Rectangle>(data, count).ToArray(),
         ControlType.Size => new ReadOnlySpan<Size>(data, count).ToArray(),
         ControlType.Point => new ReadOnlySpan<Point>(data, count).ToArray(),
-        _ => throw new LibcameraException($"unsupported control type {type}"),
+        _ => throw new NotSupportedException($"Control type {type} isn't supported."),
     };
 
     private static void WriteArray(libcamera_control_value* target, ControlKey key, Array values)

@@ -55,21 +55,26 @@ public sealed class CaptureMetadata
     public (float Red, float Blue)? ColourGains =>
         _metadata.TryGet(Controls.ColourGains, out var gains) && gains.Length >= 2 ? (gains[0], gains[1]) : null;
 
-    /// <summary>The 3x3 colour correction matrix the camera used, row-major.</summary>
-    public float[]? ColourCorrectionMatrix =>
-        _metadata.TryGet(Controls.ColourCorrectionMatrix, out var matrix) ? matrix : null;
+    /// <summary>The colour correction matrix the camera used; set it on <see cref="CameraControls.ColourCorrectionMatrix"/> to keep it.</summary>
+    public ColourCorrectionMatrix? ColourCorrectionMatrix =>
+        _metadata.TryGet(Controls.ColourCorrectionMatrix, out var matrix) ? LibcameraSharp.ColourCorrectionMatrix.FromArray(matrix) : null;
 
     /// <summary>
     /// The sensor's black level per Bayer position, on a 16-bit scale whatever the sensor's real
     /// depth is — so a 10-bit sensor reporting 4096 here means 64 in its own units.
     /// </summary>
-    public int[]? SensorBlackLevels =>
-        _metadata.TryGet(Controls.SensorBlackLevels, out var levels) ? levels : null;
+    public IReadOnlyList<int>? SensorBlackLevels =>
+        _metadata.TryGet(Controls.SensorBlackLevels, out var levels) ? Array.AsReadOnly((int[])levels.Clone()) : null;
 
 
 
     /// <summary>Everything libcamera reported, for anything not surfaced above.</summary>
-    public IReadOnlyCollection<KeyValuePair<ControlKey, object>> All => _metadata;
+    /// <remarks>
+    /// Array values are copies: the metadata is kept for saving the photo later, so a change to what you read can't
+    /// reach the file.
+    /// </remarks>
+    public IReadOnlyCollection<KeyValuePair<ControlKey, object>> All =>
+        [.. _metadata.Select(entry => entry.Value is Array array ? KeyValuePair.Create(entry.Key, array.Clone()) : entry)];
 
     /// <inheritdoc/>
     public override string ToString() => _metadata.ToString();

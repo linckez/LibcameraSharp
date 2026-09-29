@@ -9,8 +9,8 @@ internal enum TiffType : ushort
     SShort = 8, SLong = 9, SRational = 10, Float = 11, Double = 12,
 }
 
-/// <summary>EXIF tags you can set on a saved file. Each knows its directory; the value's type is the one the <c>Set</c> overload you call takes.</summary>
-public enum ExifTag : ushort
+/// <summary>The EXIF tags the SDK writes. Each knows its directory; the value's type is the one the <c>Set</c> overload called takes.</summary>
+internal enum ExifTag : ushort
 {
     /// <summary>Camera manufacturer (IFD0, ASCII).</summary>
     Make = 271,
@@ -36,60 +36,104 @@ public enum ExifTag : ushort
     DateTimeDigitized = 36868,
     /// <summary>Distance to the subject in metres (EXIF, rational).</summary>
     SubjectDistance = 37382,
-    /// <summary>User comment (EXIF, undefined bytes).</summary>
+    /// <summary>User comment (EXIF, undefined bytes behind an 8-byte character code).</summary>
     UserComment = 37510,
 }
 
 /// <summary>
-/// EXIF values to write into a JPEG on top of the ones the camera metadata provides;
-/// yours win on conflict: <c>new ExifData { Artist = "A. Rossi" }</c> for the common ones,
-/// <c>new ExifData().Set(ExifTag.Model, "My camera")</c> for any tag.
+/// Descriptive EXIF tags to write into a saved JPEG, on top of the ones the camera's metadata provides; yours win on
+/// conflict: <c>new ExifData { Artist = "A. Rossi", UserComment = "55.68,12.57" }</c>.
 /// </summary>
-public sealed class ExifData
+/// <remarks>
+/// Only the tags a camera can't know are here. What the camera measured (exposure time, ISO, subject distance) always
+/// comes from the frame; the dates are when the photo is saved. Text is written as UTF-8, so names keep their letters.
+/// </remarks>
+public sealed record ExifData
 {
-    internal readonly Dictionary<ExifTag, (TiffType Type, uint Count, byte[] Value)> Values = [];
+    /// <summary>Person who created the image.</summary>
+    public string? Artist { get; init; }
 
-    /// <summary>Person who created the image. Sugar for <c>Set(ExifTag.Artist, value)</c>.</summary>
-    public string Artist { init => Set(ExifTag.Artist, value); }
+    /// <summary>Copyright notice.</summary>
+    public string? Copyright { get; init; }
 
-    /// <summary>Copyright notice. Sugar for <c>Set(ExifTag.Copyright, value)</c>.</summary>
-    public string Copyright { init => Set(ExifTag.Copyright, value); }
+    /// <summary>Free-text description of the image.</summary>
+    public string? ImageDescription { get; init; }
 
+    /// <summary>Camera manufacturer, replacing the SDK's ("Raspberry Pi" on a Raspberry Pi).</summary>
+    public string? Make { get; init; }
 
-    /// <summary>Sets an ASCII tag.</summary>
-    public ExifData Set(ExifTag tag, string value)
+    /// <summary>Camera model, replacing the one libcamera reports.</summary>
+    public string? Model { get; init; }
+
+    /// <summary>Software that wrote the file, replacing the SDK's name and version.</summary>
+    public string? Software { get; init; }
+
+    /// <summary>A comment of your own, such as a location or a batch number.</summary>
+    public string? UserComment { get; init; }
+
+    // Writes the tags that are set over the camera's.
+    internal void WriteTo(ExifTagValues tags)
     {
-        var bytes = Encoding.ASCII.GetBytes(value + "\0");
+        if (Artist is { } artist)
+            tags.Set(ExifTag.Artist, artist);
+        if (Copyright is { } copyright)
+            tags.Set(ExifTag.Copyright, copyright);
+        if (ImageDescription is { } description)
+            tags.Set(ExifTag.ImageDescription, description);
+        if (Make is { } make)
+            tags.Set(ExifTag.Make, make);
+        if (Model is { } model)
+            tags.Set(ExifTag.Model, model);
+        if (Software is { } software)
+            tags.Set(ExifTag.Software, software);
+        if (UserComment is { } comment)
+            tags.SetComment(comment);
+    }
+}
+
+/// <summary>The tags one file gets, each with its TIFF type, count and bytes, as libexif takes them.</summary>
+internal sealed class ExifTagValues
+{
+    public Dictionary<ExifTag, (TiffType Type, uint Count, byte[] Value)> Values { get; } = [];
+
+    /// <summary>
+    /// Sets a text tag. EXIF names the type ASCII, but the bytes are UTF-8, as rpicam-apps writes a user's text
+    /// (<c>image/jpeg.cpp</c>, <c>exif_set_string</c>): plain ASCII is unchanged, and other letters survive.
+    /// </summary>
+    public void Set(ExifTag tag, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value + "\0");
         Values[tag] = (TiffType.Ascii, (uint)bytes.Length, bytes);
-        return this;
     }
 
     /// <summary>Sets a short (16-bit) tag such as <see cref="ExifTag.IsoSpeedRatings"/>.</summary>
-    public ExifData Set(ExifTag tag, ushort value)
-    {
-        Values[tag] = (TiffType.Short, 1, BitConverter.GetBytes(value));
-        return this;
-    }
+    public void Set(ExifTag tag, ushort value) => Values[tag] = (TiffType.Short, 1, BitConverter.GetBytes(value));
 
     /// <summary>Sets a rational tag such as <see cref="ExifTag.ExposureTime"/> (e.g. <c>(1, 250)</c> for 1/250 s).</summary>
-    public ExifData Set(ExifTag tag, uint numerator, uint denominator)
+    public void Set(ExifTag tag, uint numerator, uint denominator)
     {
         var bytes = new byte[8];
         BitConverter.GetBytes(numerator).CopyTo(bytes, 0);
         BitConverter.GetBytes(denominator).CopyTo(bytes, 4);
         Values[tag] = (TiffType.Rational, 1, bytes);
-        return this;
     }
 
-    /// <summary>Sets an undefined-bytes tag such as <see cref="ExifTag.UserComment"/>.</summary>
-    public ExifData Set(ExifTag tag, byte[] value)
+    /// <summary>
+    /// Sets <see cref="ExifTag.UserComment"/>: UNDEFINED bytes behind the 8-byte character code EXIF requires (EXIF 2.3
+    /// §4.6.5, the UserComment character codes; ImageSharp writes it the same way, as an encoded string). Plain ASCII
+    /// gets the ASCII code; anything else the UNICODE code with UCS-2 in the file's byte order, which the EXIF shim sets
+    /// to little-endian (<c>exif_shim.c</c>).
+    /// </summary>
+    public void SetComment(string value)
     {
-        Values[tag] = (TiffType.Undefined, (uint)value.Length, value);
-        return this;
+        byte[] bytes = Ascii.IsValid(value)
+            ? [.. "ASCII\0\0\0"u8, .. Encoding.ASCII.GetBytes(value)]
+            : [.. "UNICODE\0"u8, .. Encoding.Unicode.GetBytes(value)];
+        Values[ExifTag.UserComment] = (TiffType.Undefined, (uint)bytes.Length, bytes);
     }
 
     /// <summary>Whether <paramref name="tag"/> belongs in the EXIF sub-directory rather than IFD0.</summary>
-    internal static bool IsExifIfd(ExifTag tag) => tag is ExifTag.ExposureTime or ExifTag.IsoSpeedRatings or ExifTag.DateTimeOriginal
+    public static bool IsExifIfd(ExifTag tag) => tag is ExifTag.ExposureTime or ExifTag.IsoSpeedRatings or ExifTag.DateTimeOriginal
         or ExifTag.DateTimeDigitized or ExifTag.SubjectDistance or ExifTag.UserComment;
 }
 
@@ -125,7 +169,7 @@ internal static class ExifSegment
             return [];
 
         // The tags from the camera's metadata first; the user's values replace them tag by tag.
-        var tags = new ExifData();
+        var tags = new ExifTagValues();
         if (hasGains)
         {
             var timestamp = (now ?? DateTime.Now).ToString("yyyy:MM:dd HH:mm:ss");
@@ -145,17 +189,13 @@ internal static class ExifSegment
                 tags.Set(ExifTag.SubjectDistance, numerator, denominator);
             }
         }
-        if (exifData is not null)
-        {
-            foreach (var (tag, value) in exifData.Values)
-                tags.Values[tag] = value;
-        }
+        exifData?.WriteTo(tags);
 
         var data = Libexif.Create();
         try
         {
             foreach (var (tag, (type, count, value)) in tags.Values)
-                Libexif.Set(data, ExifData.IsExifIfd(tag), (ushort)tag, type, count, value);
+                Libexif.Set(data, ExifTagValues.IsExifIfd(tag), (ushort)tag, type, count, value);
             return Libexif.Save(data);
         }
         finally

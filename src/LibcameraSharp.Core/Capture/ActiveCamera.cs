@@ -64,7 +64,7 @@ public sealed unsafe class ActiveCamera : Camera
     /// Raised on libcamera's thread when a request completes, before it is written to
     /// <see cref="CompletedRequests"/>. Keep handlers short; exceptions are swallowed.
     /// </summary>
-    public event Action<Request>? RequestCompleted;
+    public event EventHandler<RequestCompletedEventArgs>? RequestCompleted;
 
     /// <summary>True between <see cref="Start"/> and <see cref="Stop"/>.</summary>
     public bool IsStarted { get; private set; }
@@ -80,7 +80,7 @@ public sealed unsafe class ActiveCamera : Camera
     public Request CreateRequest(ulong cookie = 0)
     {
         var request = NativeMethods.libcamera_camera_create_request(Pointer, cookie);
-        return request is null ? throw new LibcameraException("create request: configure the camera first") : new Request(request);
+        return request is null ? throw new LibcameraException("create request", "configure the camera first") : new Request(request);
     }
 
     /// <summary>Hands the request to libcamera. It comes back through <see cref="CompletedRequests"/>.</summary>
@@ -167,7 +167,7 @@ public sealed unsafe class ActiveCamera : Camera
         // A throwing handler must not stop the request reaching the channel, nor escape into libcamera's thread.
         try
         {
-            self.RequestCompleted?.Invoke(request);
+            self.RequestCompleted?.Invoke(self, new RequestCompletedEventArgs(request));
         }
         catch
         {

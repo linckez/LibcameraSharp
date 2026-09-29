@@ -41,7 +41,7 @@ public sealed class MappedFrameBuffer : IDisposable
         {
             var plane = planes[i];
             if (plane.Offset < 0)
-                throw new LibcameraException($"plane {i} has no valid offset and cannot be mapped");
+                throw new InvalidOperationException($"Plane {i} has no valid offset, so it can't be mapped.");
 
             _planes[i] = new PlaneView(plane.Fd, plane.Offset, plane.Length);
             var alignedStart = plane.Offset - plane.Offset % pageSize;

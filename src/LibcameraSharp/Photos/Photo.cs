@@ -32,18 +32,52 @@ public sealed class Photo
     /// Writes the photo in its <see cref="PhotoOptions.Encoding"/> to <paramref name="path"/>, exactly as
     /// named: the name doesn't change the encoding, and nothing is added to it.
     /// </summary>
+    /// <remarks>
+    /// The photo is encoded before the file is opened, so a photo that can't be encoded leaves no file. A save cancelled
+    /// partway through writing leaves a partial one.
+    /// </remarks>
     public async Task SaveAsync(string path, CancellationToken cancellationToken = default)
     {
-        await using var file = File.Create(path);
-        await SaveAsync(file, cancellationToken).ConfigureAwait(false);
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var encoded = EncodeToMemory();
+
+        // Opened for asynchronous I/O, as ImageSharp opens a file it saves to (LocalFileSystem.CreateAsynchronous).
+        await using var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous);
+        await WriteAsync(encoded, file, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Writes the photo in its <see cref="PhotoOptions.Encoding"/> to a stream.</summary>
-    public Task SaveAsync(Stream output, CancellationToken cancellationToken = default)
+    /// <summary>Writes the photo in its <see cref="PhotoOptions.Encoding"/> to a stream, such as an HTTP response.</summary>
+    /// <remarks>
+    /// The photo is encoded in memory first, then written with the stream's asynchronous writes, so a stream that refuses
+    /// synchronous writes, as ASP.NET Core's response body does, takes it.
+    /// </remarks>
+    public async Task SaveAsync(Stream output, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(output);
         cancellationToken.ThrowIfCancellationRequested();
+        using var encoded = EncodeToMemory();
+        await WriteAsync(encoded, output, cancellationToken).ConfigureAwait(false);
+    }
 
-        // JpegWriter is the only one that takes quality or EXIF; the others have nowhere to put them.
+    // Encoding is CPU work, done here; the writing is I/O, awaited. System.Text.Json's SerializeAsync works the same
+    // way: it fills a buffer, then awaits the stream's WriteAsync and FlushAsync.
+    private MemoryStream EncodeToMemory()
+    {
+        var encoded = new MemoryStream();
+        Encode(encoded);
+        return encoded;
+    }
+
+    private static async Task WriteAsync(MemoryStream encoded, Stream output, CancellationToken cancellationToken)
+    {
+        await output.WriteAsync(encoded.GetBuffer().AsMemory(0, (int)encoded.Length), cancellationToken).ConfigureAwait(false);
+        await output.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    // JpegWriter is the only writer that takes quality or EXIF; the others have nowhere to put them.
+    private void Encode(Stream output)
+    {
         switch (Options.Encoding)
         {
             case PhotoEncoding.Jpeg:
@@ -60,6 +94,5 @@ public sealed class Photo
                 YuvWriter.Save(_pixels, Options.Encoding, output);
                 break;
         }
-        return Task.CompletedTask;
     }
 }

@@ -55,7 +55,7 @@ public class ExifSegmentTests
         // The Model tag round-trips, and an override replaces only its own tag.
         var (metadata, cameraId, now, customModel) = Fixture();
         var theirs = new TiffReader(File.ReadAllBytes(Path.Combine(FixtureDir, "exif.custom.bin")));
-        var ours = new TiffReader(ExifSegment.Build(metadata, cameraId, new ExifData().Set(ExifTag.Model, customModel), now));
+        var ours = new TiffReader(ExifSegment.Build(metadata, cameraId, new ExifData { Model = customModel }, now));
 
         Assert.Equal(customModel, ours.Ifd0[272]);
         Assert.Equal(theirs.Ifd0[272], ours.Ifd0[272]);
@@ -69,6 +69,6 @@ public class ExifSegmentTests
         using var list = new ControlList();
         list.Set(Controls.SensorTimestamp, 1L);
         Assert.Empty(ExifSegment.Build(new Metadata(list), "cam"));
-        Assert.NotEmpty(ExifSegment.Build(new Metadata(list), "cam", new ExifData().Set(ExifTag.Artist, "me")));
+        Assert.NotEmpty(ExifSegment.Build(new Metadata(list), "cam", new ExifData { Artist = "me" }));
     }
 }

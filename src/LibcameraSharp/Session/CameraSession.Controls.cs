@@ -138,14 +138,15 @@ internal sealed partial class CameraSession
     // leaves those controls for the next.
     private void Enqueue(Request request, BufferAllocation.Slot slot)
     {
-        // The version these controls were sent at, so a waiter can tell whether its change has gone out. A value
-        // libcamera can't take is reported and dropped, or it would fail every request after this one too.
+        // The version these controls were sent at, so a waiter can tell whether its change has gone out. A value the camera
+        // can't take (one it doesn't advertise, or of the wrong type) is reported and dropped, or it would fail every
+        // request after this one too.
         var version = Controls.Version;
         try
         {
             Controls.CopyTo(request.Controls, _camera.Controls);
         }
-        catch (Exception exception) when (exception is not LibcameraException)
+        catch (Exception exception)
         {
             Console.Error.WriteLine($"LibcameraSharp: controls the camera couldn't take were dropped: {exception.Message}");
             Controls.Forget();

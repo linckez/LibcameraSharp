@@ -11,11 +11,21 @@ public partial class CameraDevice
     /// the loop runs pauses it; once the photo is done, the loop sets the camera back up and carries on.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A recording is running, or another frame loop is using the camera with different options.</exception>
-    public virtual async IAsyncEnumerable<VideoFrame> ReadFramesAsync(
-        FrameOptions options,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    /// <param name="options">How to set the camera up; the default frame options when null. An override gets null when the caller passed none.</param>
+    /// <param name="cancellationToken">Ends the loop.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
+    public virtual IAsyncEnumerable<VideoFrame> ReadFramesAsync(FrameOptions? options = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        // Checked here, at the call; an iterator's own checks would wait for the first frame asked for.
+        options ??= new FrameOptions();
+        options.Controls.ThrowIfInvalid(nameof(options));
+        return ReadFramesCoreAsync(options, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<VideoFrame> ReadFramesCoreAsync(
+        FrameOptions options,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
 
         // The camera is set up by one call at a time. The loop takes its target once per setup, so later
         // SetControls calls, such as a slider, don't hold its frames back. The loop's identity lets the camera

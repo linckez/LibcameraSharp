@@ -16,7 +16,7 @@ public sealed class CameraDescription
         ColorSpace? colourSpace = null, Orientation orientation = Orientation.Rotate0, int bufferCount = 0)
     {
         Id = id;
-        Properties = properties.ToList().AsReadOnly();
+        _properties = [.. properties.Select(entry => KeyValuePair.Create(entry.Key, Copy(entry.Value)))];
         Controls = controls.ToList().AsReadOnly();
         Capture = capture;
         Preview = preview;
@@ -29,8 +29,12 @@ public sealed class CameraDescription
     /// <summary>libcamera's id for the camera, as in <see cref="CameraInfo.Id"/>.</summary>
     public string Id { get; }
 
+    private readonly KeyValuePair<ControlKey, object>[] _properties;
+
     /// <summary>Every property the camera reports, such as its model, location and pixel array.</summary>
-    public IReadOnlyList<KeyValuePair<ControlKey, object>> Properties { get; }
+    /// <remarks>Array values are copies, so a change to what you read can't reach anyone else's.</remarks>
+    public IReadOnlyList<KeyValuePair<ControlKey, object>> Properties =>
+        Array.AsReadOnly(_properties.Select(entry => KeyValuePair.Create(entry.Key, Copy(entry.Value))).ToArray());
 
     /// <summary>
     /// Every control the camera advertises, with its smallest, largest and default value as libcamera stores them: a
@@ -60,17 +64,19 @@ public sealed class CameraDescription
     /// <summary>The value of <paramref name="property"/>, such as <c>Properties.Model</c>, if the camera reports it.</summary>
     public bool TryGetProperty<T>(Property<T> property, out T value)
     {
-        foreach (var (key, found) in Properties)
+        foreach (var (key, found) in _properties)
         {
             if (key.Id == property.Id)
             {
-                value = (T)found;
+                value = (T)Copy(found);
                 return true;
             }
         }
         value = default!;
         return false;
     }
+
+    private static object Copy(object value) => value is Array array ? array.Clone() : value;
 }
 
 /// <summary>The limits libcamera advertises for one control, as it stores them.</summary>

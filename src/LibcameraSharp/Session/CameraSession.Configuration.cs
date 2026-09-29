@@ -114,7 +114,7 @@ internal sealed partial class CameraSession
         if (config.Raw is not null)
             roles.Add(StreamRole.Raw);
         var libcameraConfig = _camera.GenerateConfiguration([.. roles])
-                              ?? throw new LibcameraException($"the camera cannot provide streams for {string.Join(", ", roles)}");
+                              ?? throw new LibcameraException("generate a configuration", $"the camera can't provide streams for {string.Join(", ", roles)}");
         libcameraConfig.Orientation = config.Transform;
 
         var index = 0;
@@ -129,7 +129,7 @@ internal sealed partial class CameraSession
         var status = libcameraConfig.Validate();
         UpdateCameraConfig(config, libcameraConfig);
         if (status == ConfigurationStatus.Invalid)
-            throw new LibcameraException($"invalid camera configuration: {config}");
+            throw new LibcameraException("validate the configuration", $"libcamera can't use {config}");
         _camera.Configure(libcameraConfig);
         _libcameraConfig = libcameraConfig;
 

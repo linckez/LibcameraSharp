@@ -34,7 +34,17 @@ public sealed record PhotoOptions
     public PhotoEncoding Encoding { get; init; } = PhotoEncoding.Jpeg;
 
     /// <summary>JPEG quality, 1 to 100. Ignored by every other format.</summary>
-    public int? JpegQuality { get; init; }
+    /// <exception cref="ArgumentOutOfRangeException">The value is outside 1 to 100.</exception>
+    public int? JpegQuality
+    {
+        get;
+        init
+        {
+            if (value is { } quality && quality is < 1 or > 100)
+                throw new ArgumentOutOfRangeException(nameof(JpegQuality), quality, "JPEG quality runs from 1 to 100.");
+            field = value;
+        }
+    }
 
     /// <summary>EXIF tags to write. JPEG only — no other format here carries them.</summary>
     public ExifData? Exif { get; init; }

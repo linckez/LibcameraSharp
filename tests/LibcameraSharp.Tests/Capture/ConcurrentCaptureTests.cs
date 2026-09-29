@@ -89,7 +89,7 @@ public class ConcurrentCaptureTests(ITestOutputHelper output)
         }, Ct);
 
         await running.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
-        var photo = await camera.CapturePhotoAsync(Ct);
+        var photo = await camera.CapturePhotoAsync(cancellationToken: Ct);
         Volatile.Write(ref photoTaken, true);
 
         var finished = await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(20), Ct));

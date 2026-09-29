@@ -15,6 +15,7 @@ public class RecorderTests : IDisposable
     public async Task Recording_mjpeg_to_a_file_writes_frames()
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        Assert.SkipWhen(TestCamera.IsVirtual, "the virtual camera timestamps frames when they are queued, not exposed");
 
         var path = Path.Combine(_directory, "clip.mjpeg");
         var ct = TestContext.Current.CancellationToken;
@@ -43,6 +44,7 @@ public class RecorderTests : IDisposable
     public async Task Recording_to_a_stream_stops_when_the_caller_hangs_up()
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        Assert.SkipWhen(TestCamera.IsVirtual, "the virtual camera timestamps frames when they are queued, not exposed");
 
         await using var camera = CameraDevice.Open();
         using var destination = new MemoryStream();

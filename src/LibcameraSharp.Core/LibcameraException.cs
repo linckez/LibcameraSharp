@@ -19,10 +19,19 @@ public class LibcameraException : Exception
         Errno = errno;
     }
 
-    /// <summary>Creates an exception for a failure that has no errno.</summary>
+    /// <summary>Creates an exception for a failed libcamera call that reports no errno.</summary>
+    /// <param name="operation">What was attempted, e.g. <c>"create request"</c>.</param>
+    /// <param name="reason">Why it failed, e.g. <c>"configure the camera first"</c>.</param>
+    public LibcameraException(string operation, string reason)
+        : base($"libcamera: failed to {operation}: {reason}")
+    {
+        Operation = operation;
+    }
+
+    /// <summary>Creates an exception with only a message; <see cref="Operation"/> is empty.</summary>
     public LibcameraException(string message) : base("libcamera: " + message)
     {
-        Operation = message;
+        Operation = "";
     }
 
     /// <summary>What was being attempted.</summary>

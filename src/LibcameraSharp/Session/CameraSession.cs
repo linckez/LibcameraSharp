@@ -65,15 +65,26 @@ internal sealed partial class CameraSession : IAsyncDisposable
         _cameraHandle = cameras[cameraNum];
         _camera = _cameraHandle.Acquire();
 
-        // The largest raw mode; cameras without a raw stream fall back to the sensor's size property.
-        (SensorResolution, SensorFormat) = SelectNativeMode();
+        // Anything failing from here lets the camera go again, so a failed open never leaves it held, as
+        // CameraDevice.Open lets the camera manager go when opening fails.
+        try
+        {
+            // The largest raw mode; cameras without a raw stream fall back to the sensor's size property.
+            (SensorResolution, SensorFormat) = SelectNativeMode();
 
-        Controls = new PendingControls(_camera.Controls);
-        _applied = new PendingControls(_camera.Controls);
-        _facts = ReadFacts();
+            Controls = new PendingControls(_camera.Controls);
+            _applied = new PendingControls(_camera.Controls);
+            _facts = ReadFacts();
+        }
+        catch
+        {
+            _camera.Dispose();
+            _cameraHandle.Dispose();
+            throw;
+        }
 
         // libcamera's thread only posts; everything else happens on the loop.
-        _camera.RequestCompleted += request => _inbox.Writer.TryWrite(new Completed(request));
+        _camera.RequestCompleted += (_, completed) => _inbox.Writer.TryWrite(new Completed(completed.Request));
         _loop = Task.Factory.StartNew(RunLoop, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 

@@ -12,8 +12,7 @@ using Moq;
 // - Pixels are XRGB8888 unless you say otherwise (four bytes a pixel: blue, green, red, unused). In that
 //   format a photo saves as JPEG or PNG with Skia alone, on any machine; other formats need FFmpeg, as a
 //   real camera's photos do.
-// - CapturePhotoAsync() without options calls CapturePhotoAsync(options): a subclass gets both by
-//   overriding the second, but a mock set up on one returns nothing for the other.
+// - An override gets null options when the caller passed none, and uses its own defaults then.
 // - An override of ReadFramesAsync needs its own [EnumeratorCancellation]; it isn't inherited.
 // - FramesDropped reads the real camera's count, so a fake that reports drops overrides it too.
 // - DisposeAsync isn't virtual (it runs DisposeAsyncCore, as .NET's dispose pattern has it), so a mock can't set it
@@ -23,11 +22,11 @@ using Moq;
 // anything else throws NotSupportedException.
 sealed class ReplayCamera(byte[] pixels, Size size) : CameraDevice
 {
-    public override Task<Photo> CapturePhotoAsync(PhotoOptions options, CancellationToken cancellationToken = default) =>
+    public override Task<Photo> CapturePhotoAsync(PhotoOptions? options = null, CancellationToken cancellationToken = default) =>
         Task.FromResult(LibcameraSharpModelFactory.Photo(pixels, size, options: options,
             metadata: LibcameraSharpModelFactory.CaptureMetadata(exposureTime: TimeSpan.FromMilliseconds(4), analogueGain: 3.0f)));
 
-    public override async IAsyncEnumerable<VideoFrame> ReadFramesAsync(FrameOptions options,
+    public override async IAsyncEnumerable<VideoFrame> ReadFramesAsync(FrameOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         for (uint sequence = 0; ; sequence++)

@@ -6,13 +6,18 @@ public partial class CameraDevice
 {
     /// <summary>Starts recording to a file; it records until you stop the returned recording.</summary>
     /// <remarks>The extension picks the container: <c>.mp4</c>, <c>.mkv</c> or <c>.ts</c>; anything else gets the codec's own bytes.</remarks>
+    /// <param name="path">The file to write, created or replaced.</param>
+    /// <param name="options">How to record; the default video options when null. An override gets null when the caller passed none.</param>
+    /// <param name="cancellationToken">Cancels the start while it waits its turn.</param>
     /// <returns>The recording, once the camera is recording.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
     public virtual Task<VideoRecording> StartRecordingAsync(string path, VideoOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         options ??= new VideoOptions();
-        return RunExclusiveAsync(() => OpenRecordingAsync(options, chosen => VideoContainer.ForPath(path).WrapFile(path, chosen)), cancellationToken);
+        options.Controls.ThrowIfInvalid(nameof(options));
+        return RunExclusiveAsync(() => OpenRecordingAsync(options, () => OpenFile(path)), cancellationToken);
     }
 
     /// <summary>Starts recording to a stream, such as an HTTP response, a socket or a pipe; it records until you stop the returned recording.</summary>
@@ -20,22 +25,48 @@ public partial class CameraDevice
     /// A destination slower than the camera slows the camera: recordings never drop frames. Stopping the
     /// recording closes <paramref name="destination"/>.
     /// </remarks>
+    /// <param name="destination">Where the recording goes; stopping the recording closes it.</param>
+    /// <param name="options">How to record; the default video options when null. An override gets null when the caller passed none.</param>
+    /// <param name="container">How the recording is wrapped; the codec's own bytes by default.</param>
+    /// <param name="cancellationToken">Cancels the start while it waits its turn.</param>
     /// <returns>The recording, once the camera is recording.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range, or <paramref name="container"/> is none of the containers.</exception>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public virtual Task<VideoRecording> StartRecordingAsync(Stream destination, VideoOptions? options = null, VideoContainer? container = null,
+    public virtual Task<VideoRecording> StartRecordingAsync(Stream destination, VideoOptions? options = null, VideoContainer container = VideoContainer.None,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(destination);
+        if (!Enum.IsDefined(container))
+            throw new ArgumentOutOfRangeException(nameof(container), container, "Not a VideoContainer.");
         options ??= new VideoOptions();
-        return RunExclusiveAsync(() => OpenRecordingAsync(options,
-            chosen => container?.Wrap(destination, chosen) ?? new FileOutput(destination, ownsStream: true)), cancellationToken);
+        options.Controls.ThrowIfInvalid(nameof(options));
+        return RunExclusiveAsync(() => OpenRecordingAsync(options, () => OpenStream(destination, container)), cancellationToken);
     }
+
+    // The output for a file: the extension picks the container, and anything else gets the codec's own bytes. libav
+    // opens and writes a muxed file itself, as it does for a file name it is given.
+    private static Output OpenFile(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".mp4" => new ContainerOutput(path, "mp4"),
+        ".mkv" => new ContainerOutput(path, "matroska"),
+        ".ts" => new ContainerOutput(path, "mpegts"),
+        _ => new FileOutput(File.Create(path), ownsStream: true),
+    };
+
+    // The output for a stream, which the recording owns from here on.
+    private static Output OpenStream(Stream destination, VideoContainer container) => container switch
+    {
+        VideoContainer.Mp4 => new ContainerOutput(destination, "mp4", ownsStream: true),
+        VideoContainer.Matroska => new ContainerOutput(destination, "matroska", ownsStream: true),
+        VideoContainer.MpegTs => new ContainerOutput(destination, "mpegts", ownsStream: true),
+        _ => new FileOutput(destination, ownsStream: true),
+    };
 
     // A recording's start is one job, like a photo. It sets the camera up for the recording, then opens its output,
     // so a setup that fails leaves no file behind.
-    private async Task<VideoRecording> OpenRecordingAsync(VideoOptions options, Func<VideoOptions, Output> makeOutput)
+    private async Task<VideoRecording> OpenRecordingAsync(VideoOptions options, Func<Output> makeOutput)
     {
-        var encoder = VideoContainer.CreateEncoder(options.Codec);
+        Encoder encoder = options.Codec == VideoCodec.Mjpeg ? new LibavMjpegEncoder() : new LibavH264Encoder();
         if (encoder is LibavH264Encoder h264)
             h264.KeyframeInterval = options.KeyframeInterval;
 
@@ -62,7 +93,7 @@ public partial class CameraDevice
         Output? output = null;
         try
         {
-            output = makeOutput(options);
+            output = makeOutput();
             CameraSession.PrepareEncoder(encoder, setup.Configuration, setup.FrameRate);
             encoder.Output = output;
             encoder.Start(options.Quality);
@@ -102,9 +133,10 @@ public partial class CameraDevice
     /// closes it. In a web handler, that is when the client hangs up.
     /// </summary>
     /// <exception cref="IOException">Writing failed for a reason other than the destination going away, such as a full disk.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range, or <paramref name="container"/> is none of the containers.</exception>
     /// <remarks>A destination that goes away, such as a client hanging up, ends the recording without an exception.</remarks>
     public virtual async Task RecordToAsync(Stream destination, VideoOptions? options = null,
-        VideoContainer? container = null, CancellationToken cancellationToken = default)
+        VideoContainer container = VideoContainer.None, CancellationToken cancellationToken = default)
     {
         try
         {

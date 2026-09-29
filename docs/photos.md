@@ -38,13 +38,13 @@ second encoding, take a second photo.
 
 ## EXIF
 
-A JPEG carries what the camera did: exposure time, ISO, when it was taken, and the focus distance
-when the lens reports one. Add your own tags, or replace a generated one:
+A JPEG carries what the camera did: exposure time, ISO, the focus distance when the lens reports one, and
+when the photo was saved. Add descriptive tags of your own; `Make`, `Model` and `Software` replace the generated ones:
 
 ```csharp
 var tagged = new PhotoOptions
 {
-    Exif = new ExifData { Artist = "A. Rossi", Copyright = "CC-BY" }.Set(ExifTag.Model, "Garden cam"),
+    Exif = new ExifData { Artist = "A. Rossi", Copyright = "CC-BY", Model = "Garden cam" },
 };
 ```
 
@@ -71,7 +71,7 @@ var withRaw = new PhotoOptions { Streams = new StreamSettings { CaptureRaw = tru
 Photo shot = await camera.CapturePhotoAsync(withRaw);
 await shot.SaveAsync("shot.jpg");                             // the developed picture
 if (shot.Raw is { } raw)
-    await raw.SaveAsync("shot.dng");                          // opens in Lightroom, darktable, RawTherapee
+    raw.Save("shot.dng");                                     // opens in Lightroom, darktable, RawTherapee
 ```
 
 `raw.Bytes` is the same data in process, still packed; `raw.Format` says how. Cameras without a raw

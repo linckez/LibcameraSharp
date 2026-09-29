@@ -29,11 +29,14 @@ public sealed class RawImage
     public ReadOnlyMemory<byte> Bytes => _bytes;
 
     /// <summary>Writes a DNG file at <paramref name="path"/>, which Lightroom, darktable and RawTherapee open.</summary>
+    /// <remarks>
+    /// Synchronous: libtiff opens and writes the file itself, by name, so there's nothing to await. Run it on another
+    /// thread if the caller mustn't wait.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">libtiff (<c>libtiff6</c>) isn't installed, or the file couldn't be written.</exception>
-    public Task SaveAsync(string path, CancellationToken cancellationToken = default)
+    public void Save(string path)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrEmpty(path);
         DngWriter.Save(_bytes, _config, _metadata, _cameraModel, path);
-        return Task.CompletedTask;
     }
 }

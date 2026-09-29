@@ -64,7 +64,7 @@ if (camera.FramesDropped > 0)
 var full = new PhotoOptions
 {
     Streams = new StreamSettings { CaptureRaw = true },
-    Exif = new ExifData().Set(ExifTag.ImageDescription, "Taken by LibcameraSharp PhotoBooth"),
+    Exif = new ExifData { ImageDescription = "Taken by LibcameraSharp PhotoBooth" },
 };
 
 Console.WriteLine("\ntaking the photo...");
@@ -77,7 +77,7 @@ Console.WriteLine($"  {photo.Size} at {photo.Metadata.ExposureTime?.TotalMillise
 if (photo.Raw is { } raw)
 {
     // A DNG carries the raw mosaic with everything a raw editor needs to develop it.
-    await raw.SaveAsync(Path.Combine(outDir, "photo.dng"));
+    raw.Save(Path.Combine(outDir, "photo.dng"));
     Console.WriteLine($"  raw {raw.Size} {raw.Format?.ToString() ?? "unknown format"}, {raw.Bytes.Length / 1024} KiB");
 }
 else

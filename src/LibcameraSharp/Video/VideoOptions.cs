@@ -29,5 +29,14 @@ public sealed record VideoOptions
     /// Frames between full pictures in an H.264 recording. A player can only start or seek at one, so
     /// fewer means smaller files and slower joining. MJPEG ignores it: every frame is whole.
     /// </summary>
-    public int KeyframeInterval { get; init; } = 30;
+    /// <exception cref="ArgumentOutOfRangeException">The value is 0 or less.</exception>
+    public int KeyframeInterval
+    {
+        get;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(KeyframeInterval));
+            field = value;
+        }
+    } = 30;
 }

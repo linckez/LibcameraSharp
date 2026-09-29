@@ -28,8 +28,8 @@ public static class LibcameraSharpModelFactory
         Rectangle? scalerCrop = null,
         int? colourTemperature = null,
         (float Red, float Blue)? colourGains = null,
-        float[]? colourCorrectionMatrix = null,
-        int[]? sensorBlackLevels = null,
+        ColourCorrectionMatrix? colourCorrectionMatrix = null,
+        IReadOnlyList<int>? sensorBlackLevels = null,
         IEnumerable<KeyValuePair<ControlKey, object>>? otherControls = null)
     {
         var values = new List<KeyValuePair<ControlKey, object>>();
@@ -55,10 +55,10 @@ public static class LibcameraSharpModelFactory
             values.Add(new(Controls.ColourTemperature, kelvin));
         if (colourGains is { } gains)
             values.Add(new(Controls.ColourGains, new[] { gains.Red, gains.Blue }));
-        if (colourCorrectionMatrix is not null)
-            values.Add(new(Controls.ColourCorrectionMatrix, colourCorrectionMatrix));
+        if (colourCorrectionMatrix is { } matrix)
+            values.Add(new(Controls.ColourCorrectionMatrix, matrix.ToArray()));
         if (sensorBlackLevels is not null)
-            values.Add(new(Controls.SensorBlackLevels, sensorBlackLevels));
+            values.Add(new(Controls.SensorBlackLevels, sensorBlackLevels.ToArray()));
 
         // The rest, checked against each control's type now rather than failing later when read.
         foreach (var (key, value) in otherControls ?? [])
@@ -67,7 +67,8 @@ public static class LibcameraSharpModelFactory
                 throw new ArgumentException($"{key.Name} is a camera property, not something a frame reports.", nameof(otherControls));
             if (value?.GetType() != key.ValueType)
                 throw new ArgumentException($"{key.Name} holds a {key.ValueType.Name}, not a {value?.GetType().Name ?? "null"}.", nameof(otherControls));
-            values.Add(new(key, value));
+            // A copy of an array, so the caller changing theirs later can't change this metadata.
+            values.Add(new(key, value is Array array ? array.Clone() : value));
         }
 
         return new CaptureMetadata(new Metadata(values));
@@ -106,7 +107,8 @@ public static class LibcameraSharpModelFactory
         if (pixels.Length < needed)
             throw new ArgumentException($"{chosen} at {size} with a stride of {rowBytes} needs {needed} bytes; got {pixels.Length}.", nameof(pixels));
 
-        return new Photo(new FramePixels(pixels, chosen, size, rowBytes, colourSpace: null),
+        // A copy, as a camera's photo is: changing the array afterwards can't change what the photo saves.
+        return new Photo(new FramePixels([.. pixels], chosen, size, rowBytes, colourSpace: null),
             (metadata ?? CaptureMetadata()).Frame, cameraModel, raw: null, options ?? new PhotoOptions());
     }
 

@@ -34,14 +34,54 @@ public class MockingTests
         }
     }
 
+    /// <summary>
+    /// A photo saves as JPEG without FFmpeg, into a stream that refuses synchronous writes, as ASP.NET Core's response
+    /// body does.
+    /// </summary>
     [Fact]
-    public async Task A_factory_photo_saves_as_jpeg_without_ffmpeg()
+    public async Task A_factory_photo_saves_as_jpeg_without_ffmpeg_and_writes_asynchronously()
     {
         var photo = LibcameraSharpModelFactory.Photo(new byte[4 * 4], Tiny);
-        using var file = new MemoryStream();
-        await photo.SaveAsync(file, TestContext.Current.CancellationToken);
+        using var body = new AsynchronousOnlyStream();
+        await photo.SaveAsync(body, TestContext.Current.CancellationToken);
 
-        Assert.Equal([0xFF, 0xD8], file.ToArray()[..2]);             // JPEG SOI
+        Assert.Equal([0xFF, 0xD8], body.ToArray()[..2]);             // JPEG SOI
+    }
+
+    // A write-only stream that takes only asynchronous writes and flushes, as Kestrel's response body does by default.
+    private sealed class AsynchronousOnlyStream : Stream
+    {
+        private readonly MemoryStream _written = new();
+
+        public byte[] ToArray() => _written.ToArray();
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+        public override void Flush() => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            _written.Write(buffer.Span);
+            return ValueTask.CompletedTask;
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     [Fact]
@@ -118,7 +158,7 @@ public class MockingTests
             exposureTime: TimeSpan.FromMilliseconds(4), analogueGain: 3, digitalGain: 1.5f, lensPosition: 2,
             lux: 400, timestamp: TimeSpan.FromSeconds(12), frameDuration: TimeSpan.FromMilliseconds(33),
             scalerCrop: new Rectangle(0, 0, 640, 480), colourTemperature: 4100, colourGains: (1.8f, 1.4f),
-            colourCorrectionMatrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], sensorBlackLevels: [4096, 4096, 4096, 4096],
+            colourCorrectionMatrix: ColourCorrectionMatrix.Identity, sensorBlackLevels: [4096, 4096, 4096, 4096],
             otherControls: [new(Controls.AeState, AeState.Converged)]);
 
         Assert.Equal(TimeSpan.FromMilliseconds(4), metadata.ExposureTime);
@@ -126,7 +166,7 @@ public class MockingTests
         Assert.Equal((TimeSpan.FromSeconds(12), TimeSpan.FromMilliseconds(33)), (metadata.Timestamp, metadata.FrameDuration));
         Assert.Equal(new Rectangle(0, 0, 640, 480), metadata.ScalerCrop);
         Assert.Equal((4100, (1.8f, 1.4f)), (metadata.ColourTemperature, metadata.ColourGains));
-        Assert.Equal([1f, 0, 0, 0, 1, 0, 0, 0, 1], metadata.ColourCorrectionMatrix!);
+        Assert.Equal(ColourCorrectionMatrix.Identity, metadata.ColourCorrectionMatrix);
         Assert.Equal([4096, 4096, 4096, 4096], metadata.SensorBlackLevels!);
         Assert.Contains(metadata.All, entry => entry.Key.Id == Controls.AeState.Id && Equals(entry.Value, AeState.Converged));
     }
@@ -186,7 +226,7 @@ public class MockingTests
     private sealed class FakeCamera : CameraDevice
     {
         public override Task<VideoRecording> StartRecordingAsync(Stream destination, VideoOptions? options = null,
-            VideoContainer? container = null, CancellationToken cancellationToken = default) =>
+            VideoContainer container = VideoContainer.None, CancellationToken cancellationToken = default) =>
             Task.FromResult<VideoRecording>(new FakeRecording());
     }
 

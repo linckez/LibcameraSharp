@@ -20,7 +20,7 @@ public class PhotoCaptureTests : IDisposable
 
         await using (var camera = CameraDevice.Open())
         {
-            var photo = await camera.CapturePhotoAsync(TestContext.Current.CancellationToken);
+            var photo = await camera.CapturePhotoAsync(cancellationToken: TestContext.Current.CancellationToken);
             await photo.SaveAsync(jpeg, TestContext.Current.CancellationToken);
             await photo.SaveAsync(png, TestContext.Current.CancellationToken);
 

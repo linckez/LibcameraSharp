@@ -82,7 +82,7 @@ public sealed unsafe class CameraConfiguration : IDisposable
     {
         var status = Validate();
         if (status == ConfigurationStatus.Invalid)
-            throw new LibcameraException($"configuration is invalid: {this}");
+            throw new LibcameraException("validate the configuration", $"libcamera can't use {this}");
         return status == ConfigurationStatus.Adjusted;
     }
 
