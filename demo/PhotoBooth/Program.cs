@@ -23,8 +23,8 @@ if (cameras.Count == 0)
     Console.Error.WriteLine("No cameras found. On a Raspberry Pi, check `rpicam-hello --list-cameras` first.");
     return 1;
 }
-foreach (var found in cameras)
-    Console.WriteLine($"  [{found.Num}] {found.Model} — {found.Id}");
+for (var number = 0; number < cameras.Count; number++)
+    Console.WriteLine($"  [{number}] {cameras[number].Model} — {cameras[number].Id}");
 
 if (cameraNumber >= cameras.Count)
 {

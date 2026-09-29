@@ -58,8 +58,10 @@ camera.Stop();
 
 ## From a CameraDevice
 
-`camera.Advanced` on a `CameraDevice` is its `ActiveCamera`: its properties, the controls it
-advertises with their ranges, and its configuration.
+`camera.Advanced` on a `CameraDevice` is its live `ActiveCamera`, the one the `CameraDevice` is
+driving. Read from it (its properties, the controls it advertises with their ranges, its configuration),
+but leave starting, stopping, configuring and requests to the `CameraDevice`: it reads the completed
+requests itself, and doesn't know about changes made behind its back.
 
 ```csharp
 string model = device.Advanced.Properties.Get(Properties.Model);

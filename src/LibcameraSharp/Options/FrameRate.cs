@@ -21,7 +21,7 @@ public readonly record struct FrameRate(double Min, double Max)
     public bool IsFixed => Min == Max;
 
     /// <summary>The <c>FrameDurationLimits</c> pair, in microseconds, shortest first.</summary>
-    public long[] ToDurationLimits() => [(long)(1_000_000 / Max), Min > 0 ? (long)(1_000_000 / Min) : LongestFrameDuration];
+    internal long[] ToDurationLimits() => [(long)(1_000_000 / Max), Min > 0 ? (long)(1_000_000 / Min) : LongestFrameDuration];
 
     // The longest frame libcamera is asked to allow when there is no lower limit: 1000 s.
     private const long LongestFrameDuration = 1_000_000_000;

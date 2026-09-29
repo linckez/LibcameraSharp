@@ -71,3 +71,9 @@ LibcameraLog.SetLevel(LogLevel.Error);         // errors only, from here on
 
 Dispose the `CameraDevice` to release the camera for other processes. Only one process can hold a
 camera at a time; a second gets `CameraBusyException`.
+
+## Testing without a camera
+
+On a laptop or a CI runner there is no camera. Derive from `CameraDevice` (or mock it) and override what your
+code calls; `LibcameraSharpModelFactory` builds the photos, frames and capabilities to return. A working fake
+camera and a Moq example are in [`tests/LibcameraSharp.Scenarios/Testing.cs`](../tests/LibcameraSharp.Scenarios/Testing.cs).

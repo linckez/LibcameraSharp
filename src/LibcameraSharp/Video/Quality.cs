@@ -1,8 +1,8 @@
 namespace LibcameraSharp;
 
 /// <summary>
-/// How good the recording should look, when you haven't set a bitrate yourself. Each encoder turns
-/// this into its own numbers — see <see cref="Encoder.Start"/>.
+/// How good the recording should look; each codec turns this into its own numbers, such as a bitrate
+/// for H.264 or a quality level for MJPEG.
 /// </summary>
 public enum Quality
 {

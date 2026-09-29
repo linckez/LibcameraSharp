@@ -31,6 +31,7 @@ Things an assistant gets wrong without being told:
 - `BGR888` is stored R, G, B in memory (libcamera names read backwards).
 - One process holds a camera at a time; a second gets `CameraBusyException`.
 - On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that.
+- Without a camera (tests, a laptop): derive from `CameraDevice` (protected constructor, virtual members) and build return values with `LibcameraSharpModelFactory`.
 
 ## Docs
 

@@ -1,6 +1,6 @@
 namespace LibcameraSharp;
 
-public sealed partial class CameraDevice
+public partial class CameraDevice
 {
     /// <summary>
     /// Frames as fast as you can take them, newest first. Frames that arrive while you are still busy
@@ -11,7 +11,7 @@ public sealed partial class CameraDevice
     /// the loop runs pauses it; once the photo is done, the loop sets the camera back up and carries on.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public async IAsyncEnumerable<VideoFrame> ReadFramesAsync(
+    public virtual async IAsyncEnumerable<VideoFrame> ReadFramesAsync(
         FrameOptions options,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -25,9 +25,9 @@ public sealed partial class CameraDevice
             try
             {
                 ApplyOptions(options.Streams, options.Controls, CameraUse.Frames);
-                if (!_session.Started)
-                    _session.Start();
-                return _session.TakeControlsTarget();
+                if (!Session.Started)
+                    Session.Start();
+                return Session.TakeControlsTarget();
             }
             finally
             {
@@ -45,7 +45,7 @@ public sealed partial class CameraDevice
             CapturedFrame captured;
             try
             {
-                captured = await _session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
+                captured = await Session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !_disposed)
             {

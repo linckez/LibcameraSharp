@@ -5,10 +5,14 @@ namespace LibcameraSharp;
 /// there is no separate configure step: the same options twice cost nothing, different ones cost the
 /// change.
 /// </summary>
-/// <remarks>Photos, recordings and frames are in the other parts of this class.</remarks>
-public sealed partial class CameraDevice : IDisposable
+/// <remarks>
+/// Photos, recordings and frames are in the other parts of this class. For tests and machines without a
+/// camera, derive from it and override what your code calls; <see cref="LibcameraSharpModelFactory"/> builds
+/// the photos, frames and metadata to return.
+/// </remarks>
+public partial class CameraDevice : IDisposable
 {
-    private readonly CameraSession _session;
+    private readonly CameraSession? _session;
     private bool _disposed;
 
     // Held by each call that sets the camera up (a photo, a recording's start, a frame loop's start),
@@ -27,6 +31,15 @@ public sealed partial class CameraDevice : IDisposable
 
     private CameraDevice(CameraSession session) => _session = session;
 
+    /// <summary>
+    /// Creates a camera with no hardware behind it, for mocking: derive from it, or use a mocking library,
+    /// and override the members your code calls. Those you don't override throw
+    /// <see cref="NotSupportedException"/>.
+    /// </summary>
+    protected CameraDevice()
+    {
+    }
+
     /// <summary>The cameras attached to this machine, in a stable order.</summary>
     public static IReadOnlyList<CameraInfo> Enumerate()
     {
@@ -44,12 +57,15 @@ public sealed partial class CameraDevice : IDisposable
     /// <summary>Opens a camera and takes exclusive ownership of it.</summary>
     /// <param name="id">The camera's <see cref="CameraInfo.Id"/>, or null for the first one.</param>
     /// <exception cref="CameraBusyException">Another process or object already holds the camera.</exception>
-    /// <exception cref="ArgumentException">No camera has that id.</exception>
+    /// <exception cref="ArgumentException">No camera has that id, or no camera is attached at all.</exception>
     public static CameraDevice Open(string? id = null)
     {
         var manager = SharedCameraManager.Acquire();
         try
         {
+            if (manager.Cameras.Count == 0)
+                throw new ArgumentException("No camera found. On a Raspberry Pi, check that `rpicam-hello --list-cameras` lists one.", nameof(id));
+
             var index = 0;
             if (id is not null)
             {
@@ -68,44 +84,52 @@ public sealed partial class CameraDevice : IDisposable
     }
 
     /// <summary>The libcamera camera underneath, for anything this class does not cover.</summary>
-    public ActiveCamera Advanced => _session.Camera;
+    public virtual ActiveCamera Advanced => Session.Camera;
 
     /// <summary>What this camera supports, in the configuration it is currently in.</summary>
-    public CameraCapabilities Capabilities => new(_session.CameraControls, _session.IsMono);
+    public virtual CameraCapabilities Capabilities => new(Session.CameraControls, Session.IsMono);
 
     /// <summary>Frames that arrived while your code was still busy with the previous one, and were dropped.</summary>
-    public long FramesDropped => Interlocked.Read(ref _framesDropped);
+    public virtual long FramesDropped => Interlocked.Read(ref _framesDropped);
 
     private long _framesDropped;
 
-    // The running camera the photo, frame and video parts work through.
-    internal CameraSession Session => _session;
+    // The running camera the photo, frame and video parts work through; a camera made for mocking has none.
+    internal CameraSession Session => _session ?? throw new NotSupportedException(
+        "This CameraDevice was made with the protected constructor for mocking, so it has no camera. Override the member your code calls.");
 
     // True for a camera with a lens that autofocus can move.
-    internal bool CanFocus => _session.CameraControls.Contains(Controls.AfMode);
+    internal bool CanFocus => Session.CameraControls.Contains(Controls.AfMode);
 
     /// <summary>
     /// Changes controls on a camera that is already running, such as from a slider over a live view.
     /// Returns at once; the next call that takes options waits for them to land.
     /// </summary>
-    public void SetControls(CameraControls controls)
+    public virtual void SetControls(CameraControls controls)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        SetControlsCore(controls);
+    }
+
+    // Sends controls to the running camera. Setting up for a call uses this rather than SetControls, so an
+    // override of the public method never runs in the middle of a photo or a recording's start.
+    private void SetControlsCore(CameraControls controls)
+    {
         _appliedControls = null;
 
-        var pending = new PendingControls(_session.CameraControls);
+        var pending = new PendingControls(Session.CameraControls);
         WarnSkipped(controls.ApplyTo(pending));
-        _session.SetControls(pending);
+        Session.SetControls(pending);
         ApplyGeometry(controls);
     }
 
     /// <summary>Skips the next <paramref name="count"/> frames.</summary>
-    public Task DropFramesAsync(int count, CancellationToken cancellationToken = default) =>
-        _session.DropFramesAsync(count, cancellationToken);
+    public virtual Task DropFramesAsync(int count, CancellationToken cancellationToken = default) =>
+        Session.DropFramesAsync(count, cancellationToken);
 
     /// <summary>What the camera did for the next frame: exposure, gain, focus and the rest.</summary>
-    public async Task<CaptureMetadata> CaptureMetadataAsync(CancellationToken cancellationToken = default) =>
-        new(await _session.CaptureMetadataAsync(cancellationToken).ConfigureAwait(false));
+    public virtual async Task<CaptureMetadata> CaptureMetadataAsync(CancellationToken cancellationToken = default) =>
+        new(await Session.CaptureMetadataAsync(cancellationToken).ConfigureAwait(false));
 
     /// <summary>Every readout the sensor supports.</summary>
     /// <remarks>
@@ -113,7 +137,7 @@ public sealed partial class CameraDevice : IDisposable
     /// <see cref="SetControls"/>, so ask before setting up. The answer is cached.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The camera is running.</exception>
-    public Task<IReadOnlyList<SensorMode>> ProbeSensorModesAsync(CancellationToken cancellationToken = default)
+    public virtual Task<IReadOnlyList<SensorMode>> ProbeSensorModesAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
@@ -122,7 +146,7 @@ public sealed partial class CameraDevice : IDisposable
         _calls.Wait(cancellationToken);
         try
         {
-            return Task.FromResult(_session.SensorModes);
+            return Task.FromResult(Session.SensorModes);
         }
         finally
         {
@@ -139,29 +163,29 @@ public sealed partial class CameraDevice : IDisposable
 
         // Compare with what was asked for, not the live configuration: libcamera adjusts what it cannot
         // honour, so the two never match and comparing them would reconfigure on every call.
-        if (_appliedUse == use && _appliedStreams == streams && _session.CameraConfiguration is not null && _session.ConfigureCount == _appliedAt)
+        if (_appliedUse == use && _appliedStreams == streams && Session.CameraConfiguration is not null && Session.ConfigureCount == _appliedAt)
         {
             // The same controls as the last call are already in effect; anything else goes out once.
             if (controls == _appliedControls)
                 return;
-            SetControls(controls);
+            SetControlsCore(controls);
             _appliedControls = controls;
             return;
         }
 
         // A running recording keeps the size and format it started with, so the camera can't be
         // reconfigured under it.
-        if (_session.Encoders.Count > 0)
+        if (Session.Encoders.Count > 0)
             throw new InvalidOperationException("Stop the recording before using the camera with different options.");
 
-        var wanted = _session.CreateConfiguration(use);
+        var wanted = Session.CreateConfiguration(use);
         streams.ApplyTo(wanted);
         WarnSkipped(controls.ApplyTo(wanted.Controls));
 
-        if (_session.Started)
-            _session.Stop();
-        _session.Configure(wanted);
-        (_appliedStreams, _appliedUse, _appliedAt, _appliedControls) = (streams, use, _session.ConfigureCount, controls);
+        if (Session.Started)
+            Session.Stop();
+        Session.Configure(wanted);
+        (_appliedStreams, _appliedUse, _appliedAt, _appliedControls) = (streams, use, Session.ConfigureCount, controls);
         ApplyGeometry(controls);
     }
 
@@ -169,18 +193,18 @@ public sealed partial class CameraDevice : IDisposable
     // a camera that can't crop, or has no autofocus windows, skips them.
     private void ApplyGeometry(CameraControls controls)
     {
-        var canCrop = _session.CameraControls.Contains(Controls.ScalerCrop);
+        var canCrop = Session.CameraControls.Contains(Controls.ScalerCrop);
         if (controls.Zoom is { } zoom)
         {
             if (canCrop)
-                _session.SetZoom(zoom);
+                Session.SetZoom(zoom);
             else
                 WarnSkipped([Controls.ScalerCrop.Name]);
         }
         if (controls.AutofocusWindows is { Count: > 0 } windows)
         {
-            if (canCrop && _session.CameraControls.Contains(Controls.AfWindows))
-                _session.SetAutofocusWindows(windows);
+            if (canCrop && Session.CameraControls.Contains(Controls.AfWindows))
+                Session.SetAutofocusWindows(windows);
             else
                 WarnSkipped([Controls.AfWindows.Name]);
         }
@@ -210,10 +234,21 @@ public sealed partial class CameraDevice : IDisposable
     /// <summary>Releases the camera.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>Releases the camera; a derived class releases its own resources here too.</summary>
+    /// <param name="disposing">True when called from <see cref="Dispose()"/>.</param>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed || !disposing)
             return;
         _disposed = true;
 
+        // A camera made for mocking never took a camera, so it has nothing to give back.
+        if (_session is null)
+            return;
         _session.Dispose();
         SharedCameraManager.Release();
     }

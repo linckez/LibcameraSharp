@@ -9,9 +9,19 @@ namespace LibcameraSharp;
 /// </remarks>
 public sealed class VideoFrame : IDisposable
 {
-    private readonly CapturedFrame _request;
-    private readonly MappedFrame _mapped;
-    private readonly StreamDescription _stream;
+    // A frame from the camera: its request, its mapped buffer and its stream's layout.
+    private readonly CapturedFrame? _request;
+    private readonly MappedFrame? _mapped;
+    private readonly StreamDescription? _stream;
+
+    // A frame built from arrays, by LibcameraSharpModelFactory: no buffer to give back.
+    private readonly byte[][]? _planes;
+    private readonly int[]? _strides;
+    private readonly Size _size;
+    private readonly PixelFormat _format;
+    private readonly uint _sequence;
+    private readonly CaptureMetadata? _metadata;
+
     private bool _disposed;
 
     internal VideoFrame(CapturedFrame request, SessionStream stream)
@@ -21,23 +31,26 @@ public sealed class VideoFrame : IDisposable
         _stream = request.Config[stream]!;
     }
 
+    internal VideoFrame(byte[][] planes, int[] strides, Size size, PixelFormat format, uint sequence, CaptureMetadata metadata) =>
+        (_planes, _strides, _size, _format, _sequence, _metadata) = (planes, strides, size, format, sequence, metadata);
+
     /// <summary>The frame's size in pixels.</summary>
-    public Size Size => _mapped.Size;
+    public Size Size => _mapped?.Size ?? _size;
 
     /// <summary>The frame's pixel format.</summary>
-    public PixelFormat Format => _mapped.Format;
+    public PixelFormat Format => _mapped?.Format ?? _format;
 
     /// <summary>
     /// The frame's sequence number. Gaps mean frames the camera produced and this loop never saw.
     /// </summary>
     /// <remarks><see cref="CameraDevice.FramesDropped"/> counts the gaps for you.</remarks>
-    public uint Sequence => _request.Sequence;
+    public uint Sequence => _request?.Sequence ?? _sequence;
 
     /// <summary>What the camera did for this frame.</summary>
-    public CaptureMetadata Metadata => new(_request.Metadata);
+    public CaptureMetadata Metadata => _request is { } request ? new(request.Metadata) : _metadata!;
 
     /// <summary>How many planes this format has: one for RGB, three for YUV420.</summary>
-    public int PlaneCount => _mapped.PlaneCount;
+    public int PlaneCount => _mapped?.PlaneCount ?? _planes!.Length;
 
     /// <summary>
     /// One plane's bytes, not copied. Plane 0 of a YUV format is the luma, which is what motion
@@ -48,7 +61,7 @@ public sealed class VideoFrame : IDisposable
     public ReadOnlyMemory<byte> Plane(int plane = 0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return _mapped.PlaneMemory(plane);
+        return _mapped?.PlaneMemory(plane) ?? _planes![plane];
     }
 
     /// <summary>
@@ -57,11 +70,13 @@ public sealed class VideoFrame : IDisposable
     /// </summary>
     public int Stride(int plane = 0)
     {
+        if (_mapped is null)
+            return _strides![plane];
         if (plane == 0)
             return (int)_mapped.Stride;
 
         // Planar YUV420 keeps its U and V rows at half the luma's stride.
-        var stride = (int)_stream.Stride!.Value;
+        var stride = (int)_stream!.Stride!.Value;
         return _stream.Format == PixelFormats.YUV420 || _stream.Format == PixelFormats.YVU420 ? stride / 2 : stride;
     }
 
@@ -74,7 +89,7 @@ public sealed class VideoFrame : IDisposable
         if (_disposed)
             return;
         _disposed = true;
-        _mapped.Dispose();
-        _request.Dispose();
+        _mapped?.Dispose();
+        _request?.Dispose();
     }
 }

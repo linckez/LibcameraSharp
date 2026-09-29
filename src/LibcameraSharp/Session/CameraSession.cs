@@ -65,7 +65,6 @@ internal sealed partial class CameraSession : IDisposable
     public static IReadOnlyList<CameraInfo> Cameras(CameraManager manager)
     {
         var infos = new List<CameraInfo>();
-        var num = 0;
         foreach (var camera in manager.Cameras)
         {
             var properties = camera.Properties;
@@ -73,8 +72,7 @@ internal sealed partial class CameraSession : IDisposable
                 camera.Id,
                 properties.TryGet(Properties.Model, out var model) ? model : "",
                 properties.TryGet(Properties.Rotation, out var rotation) ? rotation : 0,
-                properties.TryGet(Properties.Location, out var location) ? location : null,
-                num++));
+                properties.TryGet(Properties.Location, out var location) ? location : null));
         }
         return infos;
     }

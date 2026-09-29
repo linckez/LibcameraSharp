@@ -2,20 +2,23 @@ using System.Net.Sockets;
 
 namespace LibcameraSharp;
 
-public sealed partial class CameraDevice
+public partial class CameraDevice
 {
     /// <summary>Starts recording to a file, until the returned recording is disposed.</summary>
     /// <remarks>The extension picks the container: <c>.mp4</c>, <c>.mkv</c> or <c>.ts</c>; anything else gets the codec's own bytes.</remarks>
-    public VideoRecording RecordTo(string path, VideoOptions? options = null)
+    public virtual VideoRecording RecordTo(string path, VideoOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
         return Record(options ?? new VideoOptions(), chosen => VideoContainer.ForPath(path).WrapFile(path, chosen));
     }
 
     /// <summary>Starts recording to a stream, such as an HTTP response, a socket or a pipe.</summary>
-    /// <remarks>A destination slower than the camera slows the camera: recordings never drop frames.</remarks>
+    /// <remarks>
+    /// A destination slower than the camera slows the camera: recordings never drop frames. Disposing the
+    /// recording closes <paramref name="destination"/>.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public VideoRecording RecordTo(Stream destination, VideoOptions? options = null, VideoContainer? container = null)
+    public virtual VideoRecording RecordTo(Stream destination, VideoOptions? options = null, VideoContainer? container = null)
     {
         ArgumentNullException.ThrowIfNull(destination);
         return Record(options ?? new VideoOptions(),
@@ -61,26 +64,26 @@ public sealed partial class CameraDevice
         ApplyOptions(streams, options.Controls, CameraUse.Video);
 
         // The recording begins with the first frame taken with these controls.
-        if (!_session.Started)
-            _session.Start();
-        var target = _session.TakeControlsTarget();
-        encoder.StartWhen = frame => _session.ControlsLanded(frame.Request, target);
+        if (!Session.Started)
+            Session.Start();
+        var target = Session.TakeControlsTarget();
+        encoder.StartWhen = frame => Session.ControlsLanded(frame.Request, target);
         var output = makeOutput(options);
 
         // A recording that fails to start closes its output and, when no other recording runs, stops the camera.
         try
         {
-            _session.StartRecording(encoder, output, quality: options.Quality);
+            Session.StartRecording(encoder, output, quality: options.Quality);
         }
         catch
         {
             output.Dispose();
-            if (_session.Encoders.Count == 0)
-                _session.Stop();
+            if (Session.Encoders.Count == 0)
+                Session.Stop();
             throw;
         }
 
-        return new VideoRecording(_session, encoder, output);
+        return new VideoRecording(Session, encoder, output);
     }
 
     /// <summary>
@@ -89,7 +92,7 @@ public sealed partial class CameraDevice
     /// </summary>
     /// <exception cref="IOException">Writing failed for a reason other than the destination going away, such as a full disk.</exception>
     /// <remarks>A destination that goes away, such as a client hanging up, ends the recording without an exception.</remarks>
-    public async Task RecordToAsync(Stream destination, VideoOptions? options = null,
+    public virtual async Task RecordToAsync(Stream destination, VideoOptions? options = null,
         VideoContainer? container = null, CancellationToken cancellationToken = default)
     {
         var recording = RecordTo(destination, options, container);

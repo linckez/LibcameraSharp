@@ -1,9 +1,9 @@
 namespace LibcameraSharp;
 
-public sealed partial class CameraDevice
+public partial class CameraDevice
 {
     /// <summary>Takes a photograph with the camera's default photo settings.</summary>
-    public Task<Photo> CapturePhotoAsync(CancellationToken cancellationToken = default) =>
+    public virtual Task<Photo> CapturePhotoAsync(CancellationToken cancellationToken = default) =>
         CapturePhotoAsync(new PhotoOptions(), cancellationToken);
 
     /// <summary>
@@ -12,7 +12,7 @@ public sealed partial class CameraDevice
     /// </summary>
     /// <returns>The photo, with its pixels, what the camera did, and the raw image when asked for.</returns>
     /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public async Task<Photo> CapturePhotoAsync(PhotoOptions options, CancellationToken cancellationToken = default)
+    public virtual async Task<Photo> CapturePhotoAsync(PhotoOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -46,17 +46,17 @@ public sealed partial class CameraDevice
             : options.Streams;
 
         ApplyOptions(streams, controls, CameraUse.Photo);
-        if (!_session.Started)
-            _session.Start();
+        if (!Session.Started)
+            Session.Start();
 
         // A frame taken with these controls, not one already in flight when they were sent.
-        var target = _session.TakeControlsTarget();
-        using var frame = await _session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
+        var target = Session.TakeControlsTarget();
+        using var frame = await Session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
 
         var pixels = frame.CopyPixels();
         var metadata = frame.Metadata;
         // The model libcamera reports, or the camera's id when it reports none.
-        var model = _session.CameraProperties.TryGet(Properties.Model, out var name) && name.Length > 0 ? name : _session.CameraId;
+        var model = Session.CameraProperties.TryGet(Properties.Model, out var name) && name.Length > 0 ? name : Session.CameraId;
 
         RawImage? raw = null;
         if (frame.Streams.ContainsKey(SessionStream.Raw))
@@ -77,14 +77,14 @@ public sealed partial class CameraDevice
         const int FramesToStart = 16;
 
         ApplyOptions(new StreamSettings { CaptureSize = ViewfinderSize(photo.CaptureSize) }, controls with { Focus = FocusMode.Auto }, CameraUse.Frames);
-        if (!_session.Started)
-            _session.Start();
-        var target = _session.TakeControlsTarget();
+        if (!Session.Started)
+            Session.Start();
+        var target = Session.TakeControlsTarget();
 
         var started = false;
         for (var frames = 0; ; frames++)
         {
-            using var frame = await _session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
+            using var frame = await Session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
             var scanning = frame.Metadata.TryGet(Controls.AfState, out var state) && state == AfState.Scanning;
             if (scanning)
                 started = true;
@@ -97,7 +97,7 @@ public sealed partial class CameraDevice
     // view as the photo. 1280×960 when the camera reports no active area.
     private Size ViewfinderSize(Size? photoSize)
     {
-        if (!_session.CameraProperties.TryGet(Properties.PixelArrayActiveAreas, out var areas) || areas.Length == 0)
+        if (!Session.CameraProperties.TryGet(Properties.PixelArrayActiveAreas, out var areas) || areas.Length == 0)
             return new Size(1280, 960);
 
         var size = new Size(areas[0].Width / 2, areas[0].Height / 2);

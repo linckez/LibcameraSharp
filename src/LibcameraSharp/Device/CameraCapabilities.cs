@@ -10,19 +10,26 @@ namespace LibcameraSharp;
 /// </remarks>
 public sealed class CameraCapabilities
 {
-    private readonly ControlInfoMap _advertised;
+    // The camera's live control map; or, for capabilities built by LibcameraSharpModelFactory, a list in
+    // advertised order with each control's range (null when its values aren't numbers).
+    private readonly ControlInfoMap? _advertised;
+    private readonly IReadOnlyList<KeyValuePair<ControlKey, (double Min, double Max, double? Default)?>>? _listed;
     private readonly bool _isMono;
 
     internal CameraCapabilities(ControlInfoMap advertised, bool isMono) => (_advertised, _isMono) = (advertised, isMono);
+
+    internal CameraCapabilities(IReadOnlyList<KeyValuePair<ControlKey, (double Min, double Max, double? Default)?>> listed, bool isMono) =>
+        (_listed, _isMono) = (listed, isMono);
 
     /// <summary>True when the sensor has no colour filter, so colour controls do nothing.</summary>
     public bool IsMono => _isMono;
 
     /// <summary>Every control this camera advertises.</summary>
-    public IEnumerable<ControlKey> Controls => _advertised.Select(info => info.Key);
+    public IEnumerable<ControlKey> Controls => _listed?.Select(entry => entry.Key) ?? _advertised!.Select(info => info.Key);
 
     /// <summary>True when the camera advertises <paramref name="control"/>, such as <c>Controls.AnalogueGain</c>.</summary>
-    public bool Supports(ControlKey control) => Find(control) is not null;
+    public bool Supports(ControlKey control) =>
+        _listed is not null ? _listed.Any(entry => entry.Key.Id == control.Id) : Find(control) is not null;
 
     /// <summary>
     /// The smallest and largest values <paramref name="control"/> accepts, and its default, or null
@@ -35,6 +42,8 @@ public sealed class CameraCapabilities
     /// </remarks>
     public (double Min, double Max, double? Default)? Range(ControlKey control)
     {
+        if (_listed is not null)
+            return _listed.FirstOrDefault(entry => entry.Key.Id == control.Id).Value;
         if (Find(control) is not { } info || !IsNumeric(info.Key.Type))
             return null;
 
@@ -43,7 +52,7 @@ public sealed class CameraCapabilities
     }
 
     private ControlInfo? Find(ControlKey control) =>
-        _advertised.FirstOrDefault(info => info.Key.Id == control.Id);
+        _advertised!.FirstOrDefault(info => info.Key.Id == control.Id);
 
     private static bool IsNumeric(ControlType type) => type
         is ControlType.Bool or ControlType.Byte or ControlType.Unsigned16 or ControlType.Unsigned32
