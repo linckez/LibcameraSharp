@@ -13,7 +13,7 @@ public sealed class CameraDescription
 {
     internal CameraDescription(string id, IReadOnlyList<KeyValuePair<ControlKey, object>> properties, IReadOnlyList<ControlLimits> controls,
         ConfiguredStream? capture = null, ConfiguredStream? preview = null, ConfiguredStream? raw = null,
-        ColorSpace? colourSpace = null, Orientation orientation = Orientation.Rotate0, int bufferCount = 0)
+        ColorSpace? colourSpace = null, Orientation? orientation = null, int? bufferCount = null)
     {
         Id = id;
         _properties = [.. properties.Select(entry => KeyValuePair.Create(entry.Key, Copy(entry.Value)))];
@@ -55,11 +55,11 @@ public sealed class CameraDescription
     /// <summary>The colour space of the processed streams.</summary>
     public ColorSpace? ColourSpace { get; }
 
-    /// <summary>How the image is rotated and flipped.</summary>
-    public Orientation Orientation { get; }
+    /// <summary>How the image is rotated and flipped, or null before the camera is first set up.</summary>
+    public Orientation? Orientation { get; }
 
-    /// <summary>How many buffers each stream has.</summary>
-    public int BufferCount { get; }
+    /// <summary>How many buffers each stream has, or null before the camera is first set up.</summary>
+    public int? BufferCount { get; }
 
     /// <summary>The value of <paramref name="property"/>, such as <c>Properties.Model</c>, if the camera reports it.</summary>
     public bool TryGetProperty<T>(Property<T> property, out T value)
@@ -101,7 +101,7 @@ public sealed record ControlLimits
 /// <summary>One stream as libcamera configured it.</summary>
 public sealed record ConfiguredStream
 {
-    internal ConfiguredStream(Size size, PixelFormat format, uint stride, uint frameSize) =>
+    internal ConfiguredStream(Size size, PixelFormat format, uint? stride, uint frameSize) =>
         (Size, Format, Stride, FrameSize) = (size, format, stride, frameSize);
 
     /// <summary>Its size in pixels.</summary>
@@ -110,8 +110,8 @@ public sealed record ConfiguredStream
     /// <summary>Its pixel format.</summary>
     public PixelFormat Format { get; }
 
-    /// <summary>Bytes from the start of one row to the next.</summary>
-    public uint Stride { get; }
+    /// <summary>Bytes from the start of one row to the next, or null for a compressed format such as MJPEG, which has no rows.</summary>
+    public uint? Stride { get; }
 
     /// <summary>Bytes in one frame.</summary>
     public uint FrameSize { get; }

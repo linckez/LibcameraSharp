@@ -43,11 +43,10 @@ internal sealed partial class CameraSession
                 Configure(probe);
 
                 var durations = _camera.Controls.TryGet(LibcameraSharp.Controls.FrameDurationLimits);
-                var fastest = durations is null ? 0 : 1e6 / durations.Min<long>();   // an array control's bounds are scalars
-                var crop = _camera.Controls.TryGet(LibcameraSharp.Controls.ScalerCrop)?.Max<Rectangle>()
-                           ?? new Rectangle(0, 0, size.Width, size.Height);
+                double? fastest = durations is null ? null : Math.Round(1e6 / durations.Min<long>(), 2);   // an array control's bounds are scalars
+                var crop = _camera.Controls.TryGet(LibcameraSharp.Controls.ScalerCrop)?.Max<Rectangle>();
 
-                modes.Add(new SensorMode(size, bayer.BitDepth, Math.Round(fastest, 2), crop));
+                modes.Add(new SensorMode(size, bayer.BitDepth, fastest, crop));
             }
 
             if (previous is not null)
@@ -102,9 +101,10 @@ internal sealed partial class CameraSession
         return HasRawSensor && BitDepth(format) > BitDepth(bestFormat);
     }
 
-    // The sensor's pixel array size, or VGA when even that isn't reported.
+    // The sensor's pixel array size, or the live-frame default when even that isn't reported. That last choice is
+    // the SDK's own: no reference has a camera with neither raw modes nor a pixel array size.
     private Size FallbackResolution() =>
-        _camera.Properties.TryGet(Properties.PixelArraySize, out var size) ? size : new Size(640, 480);
+        _camera.Properties.TryGet(Properties.PixelArraySize, out var size) ? size : DefaultPreviewSize;
 
     /// <summary>
     /// How badly a sensor mode fits the size and depth wanted; lower is better. A mode smaller than
@@ -112,11 +112,13 @@ internal sealed partial class CameraSession
     /// </summary>
     internal static double ScoreMode(Size modeSize, int modeBitDepth, Size outputSize, int bitDepth)
     {
-        // A mode larger than wanted costs a quarter per pixel; a smaller one, double.
+        // A mode larger than wanted costs a quarter per pixel; a smaller one, double. The aspect ratio's difference
+        // weighs 1500 times a pixel's, and each bit of depth 500.
+        const double LargerPenalty = 1.0 / 4, SmallerPenalty = 2, AspectWeight = 1500, BitDepthWeight = 500;
         static double ScoreFormat(double desired, double actual)
         {
             var score = desired - actual;
-            return score < 0 ? -score / 4 : score * 2;
+            return score < 0 ? -score * LargerPenalty : score * SmallerPenalty;
         }
 
         var aspect = (double)outputSize.Width / outputSize.Height;
@@ -124,8 +126,8 @@ internal sealed partial class CameraSession
 
         var score = ScoreFormat(outputSize.Width, modeSize.Width);
         score += ScoreFormat(outputSize.Height, modeSize.Height);
-        score += 1500 * ScoreFormat(aspect, modeAspect);
-        score += 500 * Math.Abs(bitDepth - modeBitDepth);
+        score += AspectWeight * ScoreFormat(aspect, modeAspect);
+        score += BitDepthWeight * Math.Abs(bitDepth - modeBitDepth);
         return score;
     }
 

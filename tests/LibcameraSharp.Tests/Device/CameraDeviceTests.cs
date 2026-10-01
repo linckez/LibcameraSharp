@@ -73,8 +73,8 @@ public class CameraDeviceTests
         Console.SetError(warnings);
         try
         {
-            camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(8) });
-            camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(8) });
+            camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)) });
+            camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)) });
 
             // SetControls returns at once and the camera's loop warns; once it has run this, it has handled both.
             await camera.Session.CallAsync(() => { });

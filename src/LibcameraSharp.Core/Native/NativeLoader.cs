@@ -46,7 +46,7 @@ internal static class NativeLoader
             Architecture.X64 => "x64",
             var other => other.ToString().ToLowerInvariant(),
         };
-        var local = Path.Combine(AppContext.BaseDirectory, "runtimes", $"linux-{arch}", "native", "libcamera-shim.so");
+        var local = Path.Combine(AppContext.BaseDirectory, "runtimes", $"linux-{arch}", "native", NativeMethods.LibraryName + ".so");
         if (File.Exists(local))
             return NativeLibrary.Load(local);
 

@@ -5,8 +5,8 @@ What the camera does while it takes the picture: exposure, gain, white balance, 
 ```csharp
 var manual = new CameraControls
 {
-    Exposure     = TimeSpan.FromMilliseconds(8),
-    Gain         = 2.0f,
+    Exposure     = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)),
+    Gain         = GainMode.Fixed(2.0f),
     WhiteBalance = WhiteBalance.Manual(redGain: 1.8f, blueGain: 1.4f),
     Focus        = FocusMode.AtMetres(0.5),
     Zoom         = new RegionOfInterest(0.25, 0.25, 0.5, 0.5),   // x, y, width, height, as fractions
@@ -21,7 +21,8 @@ Console.WriteLine($"got {photo.Metadata.ExposureTime?.TotalMilliseconds} ms at {
 | | Means |
 |---|---|
 | `Exposure = null` (not set) | leave it as the camera has it |
-| `Exposure = TimeSpan.Zero`, `Gain = 0` | back to automatic |
+| `Exposure = ExposureMode.Auto`, `Gain = GainMode.Auto` | back to automatic |
+| `AutoExposure = false` | hold exposure and gain where automatic exposure left them (and `AutoWhiteBalance = false` the colour gains), so frames taken once it settles all match |
 
 A manual exposure stays in the sensor until something changes it: a second photo whose options don't
 mention exposure keeps the first one's.
@@ -38,7 +39,7 @@ turns: a second one waits until the first has its frame.
 ## Changing them while something runs
 
 ```csharp
-camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(12) });
+camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(12)) });
 ```
 
 For a slider over a live stream or a running recording. It returns at once, and the frames that
@@ -60,12 +61,12 @@ sees colour at all.
 
 | Property | Unit |
 |---|---|
-| `Exposure` | a `TimeSpan` |
-| `Gain` | analogue gain, 1.0 and up; the maximum is in the camera's tuning, not a fixed number |
-| `FrameRate` | a number (`30`) or a range (`(5, 30)`). A fixed rate caps exposure — 30 fps allows at most 33 ms — so give a range for low light |
+| `Exposure` | `ExposureMode.Fixed(TimeSpan)`, sent in whole microseconds, or `ExposureMode.Auto` |
+| `Gain` | `GainMode.Fixed(2.0f)`: analogue gain, 1.0 and up, the maximum in the camera's tuning, not a fixed number; or `GainMode.Auto` |
+| `FrameRate` | a number (`30`) or a range (`(5, 30)`), above zero. A fixed rate caps exposure — 30 fps allows at most 33 ms — so give a range for low light |
 | `Focus` | `FocusMode.AtMetres(0.5)`, `FocusMode.Infinity`, or `Auto` / `Continuous`. Left unset on a camera with autofocus, a photo focuses first and video and frames focus continuously |
 | `Zoom`, `AutofocusWindows` | fractions of the full sensor, 0.0 to 1.0 |
-| `FlickerPeriod` | how fast the room's lights pulse, so automatic exposure picks times that avoid dark bands across the picture: 10 ms where mains power is 50 Hz, 8.33 ms where it is 60 Hz; `TimeSpan.Zero` turns it off |
+| `Flicker` | `FlickerMode.Manual(period)` with how fast the room's lights pulse, so automatic exposure picks times that avoid dark bands across the picture: 10 ms where mains power is 50 Hz, 8.33 ms where it is 60 Hz; `FlickerMode.Off` turns it off |
 
 There are more: `Brightness`, `Contrast`, `Saturation`, `Sharpness`, `ExposureValue`, `Metering`,
 `Denoise`, `Hdr`, `AutofocusRange`, `AutofocusSpeed` and the rest are on `CameraControls`, each

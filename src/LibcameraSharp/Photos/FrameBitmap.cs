@@ -11,6 +11,12 @@ namespace LibcameraSharp;
 /// </summary>
 internal static unsafe class FrameBitmap
 {
+    // libswscale's colour-space settings: a matrix is four coefficients; range 1 is full (JPEG), 0 limited (MPEG);
+    // brightness, contrast and saturation are 16.16 fixed point, so 0, 1.0 and 1.0 leave the picture as it is.
+    private const uint CoefficientCount = 4;
+    private const int FullRange = 1, LimitedRange = 0;
+    private const int NeutralBrightness = 0, NeutralContrast = 1 << 16, NeutralSaturation = 1 << 16;
+
     /// <summary>A bitmap holding <paramref name="pixels"/> as 8-bit RGB: over the pixels themselves for the 32-bit formats, converted to BGRA otherwise.</summary>
     /// <exception cref="NotSupportedException">FFmpeg has no name for the frame's format (raw, compressed or 16-bit formats).</exception>
     public static SKBitmap FromPixels(FramePixels pixels)
@@ -43,10 +49,10 @@ internal static unsafe class FrameBitmap
             {
                 var source4 = ffmpeg.sws_getCoefficients(Matrix(colourSpace));
                 var coefficients = new int_array4();
-                for (uint i = 0; i < 4; i++)
+                for (uint i = 0; i < CoefficientCount; i++)
                     coefficients[i] = source4[i];
-                ffmpeg.sws_setColorspaceDetails(scaler, coefficients, colourSpace.Range == ColorSpace.RangeKind.Full ? 1 : 0,
-                                                coefficients, 1, 0, 1 << 16, 1 << 16);
+                ffmpeg.sws_setColorspaceDetails(scaler, coefficients, colourSpace.Range == ColorSpace.RangeKind.Full ? FullRange : LimitedRange,
+                                                coefficients, FullRange, NeutralBrightness, NeutralContrast, NeutralSaturation);
             }
 
             var target = new byte_ptrArray8();

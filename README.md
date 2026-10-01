@@ -65,7 +65,7 @@ await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions()))
 ```csharp
 var manual = new PhotoOptions
 {
-    Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(8), Gain = 2.0f },
+    Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)), Gain = GainMode.Fixed(2.0f) },
 };
 Photo sharp = await camera.CapturePhotoAsync(manual);
 ```

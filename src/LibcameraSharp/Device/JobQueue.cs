@@ -43,7 +43,7 @@ internal sealed class JobQueue : IAsyncDisposable
         if (!queued)
         {
             waiting.Dispose();
-            throw new ObjectDisposedException(nameof(CameraDevice), "The camera is closed.");
+            throw CameraSession.CameraClosed();
         }
         return result.Task;
     }

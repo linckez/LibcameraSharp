@@ -11,7 +11,7 @@ await using CameraDevice camera = CameraDevice.Open();
 
 Photo photo = await camera.CapturePhotoAsync(new PhotoOptions
 {
-    Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(8), Gain = 2.0f },
+    Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)), Gain = GainMode.Fixed(2.0f) },
 });
 await photo.SaveAsync("photo.jpg");
 
@@ -28,8 +28,9 @@ Things an assistant gets wrong without being told:
 
 - `camera.StartRecordingAsync(...)` returns a `VideoRecording`; `StopAsync()` finalises the file and throws `IOException` if writing failed. Disposing stops it too but never throws.
 - `CameraDevice` and `VideoRecording` are `IAsyncDisposable` only: `await using`, never `using`.
-- `Exposure = TimeSpan.Zero` and `Gain = 0` mean "back to automatic"; `null` means "don't send".
+- `Exposure = ExposureMode.Auto` and `Gain = GainMode.Auto` mean "back to automatic"; `null` means "don't send". Flicker is `FlickerMode.Off` or `FlickerMode.Manual(period)`.
 - Rows can be padded: use `frame.Stride(i)`, not the width.
+- `frame.ToJpeg(quality = 50)` encodes a frame as a JPEG (no EXIF) for a live view; call it before disposing the frame.
 - `BGR888` is stored R, G, B in memory (libcamera names read backwards).
 - One process holds a camera at a time; a second gets `CameraBusyException`.
 - On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that.

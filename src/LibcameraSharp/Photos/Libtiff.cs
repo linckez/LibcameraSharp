@@ -16,9 +16,8 @@ internal static unsafe class Libtiff
 {
     private const string LibraryName = "libtiff.so.6";
 
-    // libtiff's TIFFDataType values the setters accept.
-    private const int DataAscii = 2, DataShort = 3, DataLong = 4, DataRational = 5, DataSRational = 10, DataFloat = 11,
-        DataDouble = 12, DataLong8 = 16, DataIfd8 = 18;
+    // The TIFF type libtiff reads a tag's value as.
+    private static TiffType DataType(_TIFFField* field) => (TiffType)NativeMethods.tiff_field_data_type(field);
 
     /// <summary>Creates <paramref name="path"/> as a new TIFF file, open for writing.</summary>
     /// <exception cref="InvalidOperationException">libtiff isn't installed, or the file can't be created.</exception>
@@ -37,7 +36,7 @@ internal static unsafe class Libtiff
     {
         var field = Field(tif, tag);
         Require(field, tag, "one 16- or 32-bit integer", !PassesCount(field) && NativeMethods.tiff_field_read_count(field) == 1
-            && NativeMethods.tiff_field_data_type(field) is DataShort or DataLong && NativeMethods.tiff_field_value_size(field) is 2 or 4);
+            && DataType(field) is TiffType.Short or TiffType.Long && NativeMethods.tiff_field_value_size(field) is 2 or 4);
         Check(NativeMethods.tiff_set_field_uint32((tiff*)tif, tag, value), tag);
     }
 
@@ -46,7 +45,7 @@ internal static unsafe class Libtiff
     {
         var field = Field(tif, tag);
         Require(field, tag, "one 64-bit offset", !PassesCount(field)
-            && NativeMethods.tiff_field_data_type(field) is DataIfd8 or DataLong8 && NativeMethods.tiff_field_value_size(field) == 8);
+            && DataType(field) is TiffType.Ifd8 or TiffType.Long8 && NativeMethods.tiff_field_value_size(field) == 8);
         Check(NativeMethods.tiff_set_field_uint64((tiff*)tif, tag, value), tag);
     }
 
@@ -55,7 +54,7 @@ internal static unsafe class Libtiff
     {
         var field = Field(tif, tag);
         Require(field, tag, "one number", !PassesCount(field) && NativeMethods.tiff_field_read_count(field) == 1
-            && NativeMethods.tiff_field_data_type(field) is DataRational or DataSRational or DataFloat or DataDouble);
+            && DataType(field) is TiffType.Rational or TiffType.SRational or TiffType.Float or TiffType.Double);
         Check(NativeMethods.tiff_set_field_double((tiff*)tif, tag, value), tag);
     }
 
@@ -63,7 +62,7 @@ internal static unsafe class Libtiff
     public static void Set(nint tif, ushort tag, string value)
     {
         var field = Field(tif, tag);
-        Require(field, tag, "a string", !PassesCount(field) && NativeMethods.tiff_field_data_type(field) == DataAscii);
+        Require(field, tag, "a string", !PassesCount(field) && DataType(field) == TiffType.Ascii);
         Check(NativeMethods.tiff_set_field_string((tiff*)tif, tag, value), tag);
     }
 

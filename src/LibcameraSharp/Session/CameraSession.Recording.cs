@@ -50,10 +50,10 @@ internal sealed partial class CameraSession
     });
 
     /// <summary>
-    /// Sets an encoder up for the capture stream it will be fed: frame size, stride, format and colour space, and a
-    /// frame rate when it has none.
+    /// Sets an encoder up for the capture stream it will be fed: frame size, stride, format, colour space and frame
+    /// rate.
     /// </summary>
-    internal static void PrepareEncoder(Encoder encoder, SessionConfiguration configuration, double nominalFrameRate)
+    internal static void PrepareEncoder(Encoder encoder, SessionConfiguration configuration, double frameRate)
     {
         var stream = configuration.Capture;
         encoder.Width = (int)stream.Size!.Value.Width;
@@ -61,7 +61,7 @@ internal sealed partial class CameraSession
         encoder.Stride = stream.Stride!.Value;
         encoder.Format = stream.Format!.Value;
         encoder.ColourSpace = configuration.ColourSpace;
-        encoder.FrameRate ??= nominalFrameRate;
+        encoder.FrameRate = frameRate;
     }
 
     // Every recording gets its own hold on the frame, once its controls have landed. Recordings never drop: a slow

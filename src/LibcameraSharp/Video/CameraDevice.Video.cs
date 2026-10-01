@@ -45,22 +45,21 @@ public partial class CameraDevice
 
     // The output for a file: the extension picks the container, and anything else gets the codec's own bytes. libav
     // opens and writes a muxed file itself, as it does for a file name it is given.
-    private static Output OpenFile(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    private static Output OpenFile(string path)
     {
-        ".mp4" => new ContainerOutput(path, "mp4"),
-        ".mkv" => new ContainerOutput(path, "matroska"),
-        ".ts" => new ContainerOutput(path, "mpegts"),
-        _ => new FileOutput(File.Create(path), ownsStream: true),
-    };
+        var container = Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".mp4" => VideoContainer.Mp4,
+            ".mkv" => VideoContainer.Matroska,
+            ".ts" => VideoContainer.MpegTs,
+            _ => VideoContainer.None,
+        };
+        return container == VideoContainer.None ? new FileOutput(File.Create(path), ownsStream: true) : new ContainerOutput(path, container);
+    }
 
     // The output for a stream, which the recording owns from here on.
-    private static Output OpenStream(Stream destination, VideoContainer container) => container switch
-    {
-        VideoContainer.Mp4 => new ContainerOutput(destination, "mp4", ownsStream: true),
-        VideoContainer.Matroska => new ContainerOutput(destination, "matroska", ownsStream: true),
-        VideoContainer.MpegTs => new ContainerOutput(destination, "mpegts", ownsStream: true),
-        _ => new FileOutput(destination, ownsStream: true),
-    };
+    private static Output OpenStream(Stream destination, VideoContainer container) =>
+        container == VideoContainer.None ? new FileOutput(destination, ownsStream: true) : new ContainerOutput(destination, container, ownsStream: true);
 
     // A recording's start is one job, like a photo. It sets the camera up for the recording, then opens its output,
     // so a setup that fails leaves no file behind.
@@ -69,10 +68,6 @@ public partial class CameraDevice
         Encoder encoder = options.Codec == VideoCodec.Mjpeg ? new LibavMjpegEncoder() : new LibavH264Encoder();
         if (encoder is LibavH264Encoder h264)
             h264.KeyframeInterval = options.KeyframeInterval;
-
-        // The encoder states the rate asked for; without one, the camera's fastest, at most 30 fps.
-        if (options.Controls.FrameRate is { Max: > 0 } frameRate)
-            encoder.FrameRate = frameRate.Max;
 
         // Both encoders take YUV420, so have the camera deliver it rather than convert every frame.
         var streams = options.Streams.CaptureFormat is null
@@ -94,7 +89,9 @@ public partial class CameraDevice
         try
         {
             output = makeOutput();
-            CameraSession.PrepareEncoder(encoder, setup.Configuration, setup.FrameRate);
+            // The encoder states the rate asked for; without one, the camera's fastest, at most 30 fps.
+            var frameRate = options.Controls.FrameRate is { } asked ? asked.Max : setup.FrameRate;
+            CameraSession.PrepareEncoder(encoder, setup.Configuration, frameRate);
             encoder.Output = output;
             encoder.Start(options.Quality);
             await Session.AttachEncoderAsync(encoder, setup.Target).ConfigureAwait(false);
@@ -143,7 +140,8 @@ public partial class CameraDevice
             // Record until the caller cancels, or writing fails; stopping reports the failure, if there was one.
             var recording = await StartRecordingAsync(destination, options, container, cancellationToken).ConfigureAwait(false);
             await Task.WhenAny(Task.Delay(Timeout.Infinite, cancellationToken), recording.WhenFailed).ConfigureAwait(false);
-            await recording.StopAsync().ConfigureAwait(false);
+            // Not with cancellationToken: it has usually just been cancelled, and the stop must be waited for.
+            await recording.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception exception) when (DestinationWentAway(exception, cancellationToken))
         {

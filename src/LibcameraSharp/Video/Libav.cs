@@ -11,6 +11,15 @@ internal static class Libav
 {
     private static bool _initialised;
 
+    /// <summary>Every timestamp here is in microseconds.</summary>
+    internal static readonly AVRational MicrosecondTimeBase = new() { num = 1, den = 1_000_000 };
+
+    /// <summary>
+    /// A frame rate as libav takes it, to a thousandth of a frame a second and cut off rather than rounded, so the
+    /// encoder and the container state the same rate.
+    /// </summary>
+    internal static AVRational FrameRate(double framesPerSecond) => new() { num = (int)(framesPerSecond * 1000), den = 1000 };
+
     internal static void Initialise()
     {
         if (_initialised)

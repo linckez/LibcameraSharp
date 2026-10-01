@@ -51,7 +51,7 @@ public sealed unsafe class CameraManager : IDisposable
     }
 
     /// <summary>The running libcamera's version string, e.g. <c>v0.7.2+rpt20260817</c>.</summary>
-    public static string Version => NativeMethods.libcamera_version_string() ?? "";
+    public static string Version => NativeMethods.libcamera_version_string()!;   // the shim returns a c_str(), never null
 
     /// <summary>The libcamera version the bindings were generated from, e.g. <c>0.7.2</c>.</summary>
     public static string GeneratedAgainstVersion => NativeMethods.GeneratedAgainstLibcamera;
@@ -136,8 +136,7 @@ public sealed unsafe class CameraManager : IDisposable
         if (MajorMinor(running) == supported)
             return null;
 
-        var shown = running.Length == 0 ? "an unreported version" : running;
-        return $"LibcameraSharp: running libcamera {shown}, but these bindings support {supported}.x (generated for {generatedAgainst}). " +
+        return $"LibcameraSharp: running libcamera {running}, but these bindings support {supported}.x (generated for {generatedAgainst}). " +
                "Continuing at your own risk: control ids can differ between minor versions, so a control may set a different one without any error.";
     }
 }

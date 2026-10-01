@@ -152,8 +152,8 @@ internal sealed partial class CameraSession
     internal double NominalFrameRate()
     {
         if (_camera.Controls.TryGet(LibcameraSharp.Controls.FrameDurationLimits) is not { } limits)
-            return 30;
-        return 1_000_000.0 / Math.Max(limits.Min<long>(), 33333);
+            return VideoOptions.DefaultFrameRate;
+        return 1_000_000.0 / Math.Max(limits.Min<long>(), VideoFrameDuration);
     }
 }
 

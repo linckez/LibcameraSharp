@@ -5,9 +5,9 @@ namespace LibcameraSharp;
 public sealed class Photo
 {
     private readonly FramePixels _pixels;
-    private readonly string _cameraModel;
+    private readonly string? _cameraModel;
 
-    internal Photo(FramePixels pixels, Metadata metadata, string cameraModel, RawImage? raw, PhotoOptions options)
+    internal Photo(FramePixels pixels, Metadata metadata, string? cameraModel, RawImage? raw, PhotoOptions options)
     {
         _pixels = pixels;
         _cameraModel = cameraModel;
@@ -42,8 +42,11 @@ public sealed class Photo
         cancellationToken.ThrowIfCancellationRequested();
         using var encoded = EncodeToMemory();
 
-        // Opened for asynchronous I/O, as ImageSharp opens a file it saves to (LocalFileSystem.CreateAsynchronous).
-        await using var file = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous);
+        // Opened for asynchronous I/O, with the default buffer.
+        await using var file = new FileStream(path, new FileStreamOptions
+        {
+            Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None, Options = FileOptions.Asynchronous,
+        });
         await WriteAsync(encoded, file, cancellationToken).ConfigureAwait(false);
     }
 

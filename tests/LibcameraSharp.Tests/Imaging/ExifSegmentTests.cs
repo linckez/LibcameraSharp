@@ -64,6 +64,38 @@ public class ExifSegmentTests
     }
 
     [Fact]
+    public void A_location_goes_into_the_gps_directory_as_degrees_minutes_and_seconds()
+    {
+        // Read back as |degrees| + minutes/60 + seconds/3600, as EXIF readers do.
+        static double Degrees(object value)
+        {
+            var dms = (double[])value;
+            return dms[0] + dms[1] / 60 + dms[2] / 3600;
+        }
+
+        using var list = new ControlList();
+        var north = new TiffReader(ExifSegment.Build(new Metadata(list), "cam", new ExifData { Location = new GpsLocation(55.6761, 12.5683, 12.3) }));
+        Assert.Equal(new byte[] { 2, 2, 0, 0 }, north.Gps![0]);
+        Assert.Equal("N", north.Gps[1]);
+        Assert.Equal(new[] { 55.0, 40.0, 33.96 }, (double[])north.Gps[2]);
+        Assert.Equal(55.6761, Degrees(north.Gps[2]), 1e-9);
+        Assert.Equal("E", north.Gps[3]);
+        Assert.Equal(12.5683, Degrees(north.Gps[4]), 1e-9);
+        Assert.Equal(new byte[] { 0 }, north.Gps[5]);
+        Assert.Equal(12.3, ((double[])north.Gps[6])[0]);
+        Assert.Equal("WGS-84", north.Gps[18]);
+
+        var south = new TiffReader(ExifSegment.Build(new Metadata(list), "cam", new ExifData { Location = new GpsLocation(-33.9, -18.4, -3.5) }));
+        Assert.Equal("S", south.Gps![1]);
+        Assert.Equal(33.9, Degrees(south.Gps[2]), 1e-9);
+        Assert.Equal("W", south.Gps[3]);
+        Assert.Equal(new byte[] { 1 }, south.Gps[5]);
+        Assert.Equal(3.5, ((double[])south.Gps[6])[0]);
+
+        Assert.False(new TiffReader(ExifSegment.Build(new Metadata(list), "cam", new ExifData { Artist = "me" })).Ifd0.ContainsKey(34853));
+    }
+
+    [Fact]
     public void No_gains_and_no_user_data_means_no_segment()
     {
         using var list = new ControlList();

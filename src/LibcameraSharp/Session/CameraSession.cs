@@ -13,7 +13,7 @@ namespace LibcameraSharp;
 /// One loop, on its own thread, owns the camera and everything the session knows about it. It handles, in
 /// order: frames libcamera completed, frames their holders handed back, and calls from any other thread.
 /// libcamera wants configure, start and stop synchronised by the caller (<c>camera.cpp</c>), and a single
-/// owner does that with no locks: picamera2 runs its jobs on its event loop the same way.
+/// owner does that with no locks.
 /// </para>
 /// <para>
 /// Members whose names end in <c>Async</c> may be called from any thread: they post work to the loop and
@@ -97,8 +97,8 @@ internal sealed partial class CameraSession : IAsyncDisposable
             var properties = camera.Properties;
             infos.Add(new CameraInfo(
                 camera.Id,
-                properties.TryGet(Properties.Model, out var model) ? model : "",
-                properties.TryGet(Properties.Rotation, out var rotation) ? rotation : 0,
+                properties.TryGet(Properties.Model, out var model) ? model : null,
+                properties.TryGet(Properties.Rotation, out var rotation) ? rotation : null,
                 properties.TryGet(Properties.Location, out var location) ? location : null));
         }
         return infos;
@@ -165,7 +165,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
     private void Post(Message message)
     {
         if (!_inbox.Writer.TryWrite(message))
-            throw new ObjectDisposedException(nameof(CameraDevice), "The camera is closed.");
+            throw CameraClosed();
     }
 
     // The loop: one message at a time, each to its end. A failure it can't pin on a call ends it.
@@ -198,7 +198,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
                 break;
             case Work work when _closed:
                 // The camera is gone; only frames coming back still matter.
-                work.Fail(new ObjectDisposedException(nameof(CameraDevice), "The camera is closed."));
+                work.Fail(CameraClosed());
                 break;
             case Work work:
                 work.Run();
@@ -309,8 +309,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
 
     // libcamera cancels every outstanding request when the camera times out (a loose cable, a sensor glitch) and
     // leaves recovery to the application: restart, with the controls it had. The rest of the run's cancellations arrive
-    // afterwards, from an old run, and are ignored. A camera that keeps timing out keeps restarting, as rpicam-vid does
-    // (rpicam_vid.cpp:91-95).
+    // afterwards, from an old run, and are ignored. A camera that keeps timing out keeps restarting.
     private void Restart(string why)
     {
         Console.Error.WriteLine($"LibcameraSharp: {why}; restarting the camera. Check that the camera's cable is attached securely.");
@@ -318,11 +317,14 @@ internal sealed partial class CameraSession : IAsyncDisposable
         Start();
     }
 
+    /// <summary>The exception every call on a closed camera gets.</summary>
+    internal static ObjectDisposedException CameraClosed() => new(nameof(CameraDevice), "The camera is closed.");
+
     // Work that would touch the camera is refused once a close has begun.
     private void ThrowIfClosing()
     {
         if (_closing)
-            throw new ObjectDisposedException(nameof(CameraDevice), "The camera is closed.");
+            throw CameraClosed();
     }
 
     /// <summary>
@@ -462,7 +464,9 @@ internal sealed partial class CameraSession : IAsyncDisposable
     }
 
     private static ConfiguredStream? Configured(StreamDescription? stream) =>
-        stream is { Size: { } size, Format: { } format } ? new ConfiguredStream(size, format, stream.Stride ?? 0, stream.FrameSize ?? 0) : null;
+        stream is { Size: { } size, Format: { } format }
+            ? new ConfiguredStream(size, format, stream.Stride is 0 ? null : stream.Stride, stream.FrameSize!.Value)   // libcamera's 0 stride: no rows
+            : null;
 }
 
 /// <summary>What callers on any thread may know about a camera, published by its session's loop.</summary>

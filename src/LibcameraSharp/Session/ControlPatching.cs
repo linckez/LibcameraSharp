@@ -4,8 +4,9 @@ namespace LibcameraSharp;
 /// Copies user controls into a request, adding what libcamera needs but
 /// doesn't infer: since libcamera 0.4, <see cref="LibcameraSharp.Controls.ExposureTime"/> and
 /// <see cref="LibcameraSharp.Controls.AnalogueGain"/> only take effect when their <c>*Mode</c> is
-/// <c>Manual</c>, and a value of 0 means "back to auto". libcamera itself only patches the modes
-/// for <see cref="LibcameraSharp.Controls.AeEnable"/> (<c>Camera::patchControlList</c>).
+/// <c>Manual</c>. A value of 0 is the SDK's way of saying "back to auto" (<see cref="ExposureMode.Auto"/>,
+/// <see cref="GainMode.Auto"/>): it sets the mode and isn't sent. libcamera itself only patches the modes for
+/// <see cref="LibcameraSharp.Controls.AeEnable"/> (<c>Camera::patchControlList</c>).
 /// </summary>
 internal static class ControlPatching
 {

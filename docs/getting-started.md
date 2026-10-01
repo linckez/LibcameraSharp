@@ -32,7 +32,7 @@ set the camera up again:
 static readonly PhotoOptions Night = new()
 {
     Streams  = new StreamSettings { CaptureSize = new Size(2028, 1520) },
-    Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(80), Gain = 8.0f },
+    Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(80)), Gain = GainMode.Fixed(8.0f) },
     JpegQuality = 95,
 };
 

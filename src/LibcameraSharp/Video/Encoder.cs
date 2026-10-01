@@ -29,8 +29,8 @@ internal abstract class Encoder
     /// <summary>Frames encoded since <see cref="Start"/>.</summary>
     public long FramesEncoded { get; private set; }
 
-    /// <summary>Nominal frame rate, used by encoders that must state one. Filled in from the camera if left null.</summary>
-    public double? FrameRate { get; set; }
+    /// <summary>Nominal frame rate, used by encoders that must state one. Set by <c>CameraSession.PrepareEncoder</c>.</summary>
+    public double FrameRate { get; set; }
 
     /// <summary>Frame width in pixels. Set from the camera configuration by <c>CameraSession.PrepareEncoder</c>.</summary>
     public int Width { get; set; }
@@ -52,7 +52,7 @@ internal abstract class Encoder
     /// encoder has no explicit bitrate set.
     /// </summary>
     /// <exception cref="InvalidOperationException">Already running, or there is no output.</exception>
-    public void Start(Quality? quality = null)
+    public void Start(Quality quality)
     {
         if (Running)
             throw new InvalidOperationException("The encoder is already running.");
@@ -61,7 +61,7 @@ internal abstract class Encoder
 
         FramesEncoded = 0;
         _firstTimestamp = null;
-        Setup(quality ?? Quality.Medium);
+        Setup(quality);
 
         // A start that fails part-way releases what it opened, so nothing is left allocated or open.
         try

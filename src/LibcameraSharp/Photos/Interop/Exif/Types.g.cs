@@ -11,6 +11,7 @@ internal enum exif_block_ifd : int
 {
     EXIF_BLOCK_IFD_0 = 0,
     EXIF_BLOCK_IFD_EXIF = 2,
+    EXIF_BLOCK_IFD_GPS = 3,
 }
 
 // Opaque handles: only ever used through typed pointers, never instantiated.

@@ -34,7 +34,7 @@ Without `SensorMode`, the camera picks the mode that best fits `CaptureSize`. Pr
 camera once per mode, so the first call stops a running camera (a running recording refuses it) and
 forgets controls set with `SetControls`; ask right after `Open`. The answer is kept.
 
-`mode.CropLimits` shows how much of the sensor a mode sees: a smaller rectangle is a narrower view,
+`mode.CropLimits` shows how much of the sensor a mode sees (null when the camera has no crop control): a smaller rectangle is a narrower view,
 which matters when a fast mode crops rather than bins.
 
 ## Which way up

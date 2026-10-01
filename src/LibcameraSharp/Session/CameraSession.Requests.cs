@@ -206,8 +206,7 @@ internal sealed partial class CameraSession
     }
 
     // Every recording gets every frame (from the one its controls landed on); then the oldest waiting call that
-    // accepts it takes it, as picamera2's capture steps each take a completed request for themselves
-    // (picamera2.py capture_metadata_). A frame nobody took is kept for the next call, or goes straight back.
+    // accepts it takes it for itself. A frame nobody took is kept for the next call, or goes straight back.
     private void Distribute(Request request, BufferAllocation.Slot slot)
     {
         FeedEncoders(request, slot);

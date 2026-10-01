@@ -14,6 +14,9 @@ internal sealed unsafe class LibavMjpegEncoder : LibavEncoder
     /// <inheritdoc/>
     protected override VideoCodec Codec => VideoCodec.Mjpeg;
 
+    // FFmpeg's name for its motion-JPEG encoder.
+    private const string EncoderName = "mjpeg";
+
     /// <inheritdoc/>
     protected override void Setup(Quality quality) => _quantiser = QualityToQuantiser(quality);
 
@@ -21,7 +24,7 @@ internal sealed unsafe class LibavMjpegEncoder : LibavEncoder
     protected override void Started()
     {
         Libav.Initialise();
-        if (!TryOpen("mjpeg"))
+        if (!TryOpen(EncoderName))
             throw new InvalidOperationException("This FFmpeg build has no MJPEG encoder.");
     }
 

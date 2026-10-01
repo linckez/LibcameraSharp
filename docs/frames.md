@@ -49,6 +49,19 @@ width; reading it as `width` bytes shears the image.
 **Names read backwards.** libcamera names describe a pixel as a little-endian number, so `BGR888` is
 stored R, G, B in memory and `RGB888` is stored B, G, R. If colours come out swapped, this is why.
 
+## As JPEG
+
+For a live view in a web page, turn each frame into a JPEG and serve it as multipart MJPEG:
+
+```csharp
+await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions(), ct))
+    using (frame)
+        latest = frame.ToJpeg();                  // quality 50 unless you pass one; no EXIF
+```
+
+It encodes before it returns, so the frame can go back to the camera straight after. A photo, with EXIF,
+is `CapturePhotoAsync`.
+
 ## Two streams
 
 `CaptureSize` and `PreviewSize` give two streams from one sensor. `ReadFramesAsync` reads the preview

@@ -27,24 +27,12 @@ internal sealed class StreamDescription
     /// <summary>Bytes per frame. Filled in by <see cref="CameraSession.Configure(SessionConfiguration)"/>.</summary>
     public uint? FrameSize { get; set; }
 
-    /// <summary>
-    /// Rounds the size down so every plane's row is a multiple of the ISP's preferred alignment
-    /// (32 bytes, or 64 for YUV420; 2 pixels when <paramref name="optimal"/> is false).
-    /// </summary>
-    public void Align(bool optimal = true)
+    /// <summary>Rounds the size down to even width and height, which every pixel format and the ISP accept.</summary>
+    public void Align()
     {
         if (Size is not { } size)
             return;
-        var align = 2u;
-        if (optimal)
-        {
-            align = 32;
-            if (Format == PixelFormats.YUV420 || Format == PixelFormats.YVU420)
-                align = 64;     // the UV planes have half this alignment
-            else if (Format == PixelFormats.XBGR8888 || Format == PixelFormats.XRGB8888)
-                align = 16;     // 4 bytes per pixel gives an automatic extra factor of 2
-        }
-        Size = new Size(size.Width - size.Width % align, size.Height - size.Height % 2);
+        Size = new Size(size.Width - size.Width % 2, size.Height - size.Height % 2);
     }
 
     internal StreamDescription Clone() => new(Size, Format) { Stride = Stride, FrameSize = FrameSize };

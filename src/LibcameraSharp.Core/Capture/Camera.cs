@@ -23,7 +23,7 @@ public unsafe class Camera : IDisposable
     internal libcamera_camera_t* Pointer => _handle.Pointer;
 
     /// <summary>Unique id, e.g. <c>/base/soc/i2c0mux/i2c@1/imx708@1a</c> on a Pi or <c>platform/vimc.0 Sensor B</c>.</summary>
-    public string Id => NativeMethods.libcamera_camera_id(Pointer) ?? "";
+    public string Id => NativeMethods.libcamera_camera_id(Pointer)!;       // the shim returns the id's c_str(), never null
 
     /// <summary>Static facts about the camera: model, sensor size, location, …</summary>
     public PropertyList Properties => new(NativeMethods.libcamera_camera_properties(Pointer));

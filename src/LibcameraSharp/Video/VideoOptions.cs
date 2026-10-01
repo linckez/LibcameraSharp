@@ -38,5 +38,10 @@ public sealed record VideoOptions
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value, nameof(KeyframeInterval));
             field = value;
         }
-    } = 30;
+    } = DefaultKeyframeInterval;
+
+    // The frame rate an encoder states when neither the options nor the camera give one, and the keyframe interval a
+    // recording gets by default: one keyframe a second at that rate.
+    internal const double DefaultFrameRate = 30;
+    internal const int DefaultKeyframeInterval = 30;
 }

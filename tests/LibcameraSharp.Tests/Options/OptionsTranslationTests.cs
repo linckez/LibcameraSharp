@@ -4,7 +4,7 @@ namespace LibcameraSharp.Tests.Options;
 /// <summary>
 /// Translating options into what the camera layer already understands. The rule being tested is
 /// the one the whole design rests on: <b>a control list is sparse</b> — null does not send the
-/// control, and zero sends the value that returns it to automatic. Needs no camera.
+/// control, and automatic sends the zero that returns it to automatic. Needs no camera.
 /// </summary>
 public class OptionsTranslationTests
 {
@@ -24,7 +24,7 @@ public class OptionsTranslationTests
     [Fact]
     public void Only_what_was_set_is_sent()
     {
-        var settings = Translate(new CameraControls { Gain = 2.0f });
+        var settings = Translate(new CameraControls { Gain = GainMode.Fixed(2.0f) });
 
         Assert.Equal(1, settings.Count);
         Assert.True(settings.Contains(Controls.AnalogueGain));
@@ -34,17 +34,17 @@ public class OptionsTranslationTests
     [Fact]
     public void Exposure_is_microseconds()
     {
-        var settings = Translate(new CameraControls { Exposure = TimeSpan.FromMilliseconds(8) });
+        var settings = Translate(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)) });
 
         Assert.Equal(8_000, settings.Get(Controls.ExposureTime));
     }
 
     [Fact]
-    public void Zero_is_sent_because_it_is_what_returns_the_camera_to_automatic()
+    public void Automatic_is_sent_as_the_zero_that_returns_the_camera_to_automatic()
     {
         // ExposureTime 0 becomes ExposureTimeMode Auto; dropping it as "empty" would leave a camera
         // stuck in manual with no way back.
-        var settings = Translate(new CameraControls { Exposure = TimeSpan.Zero, Gain = 0f });
+        var settings = Translate(new CameraControls { Exposure = ExposureMode.Auto, Gain = GainMode.Auto });
 
         Assert.Equal(0, settings.Get(Controls.ExposureTime));
         Assert.Equal(0f, settings.Get(Controls.AnalogueGain));
@@ -61,8 +61,10 @@ public class OptionsTranslationTests
     [Fact]
     public void Manual_white_balance_sends_gains_and_automatic_sends_a_mode()
     {
+        // Gains apply only with automatic white balance off, so that goes with them.
         var manual = Translate(new CameraControls { WhiteBalance = WhiteBalance.Manual(1.8f, 1.4f) });
         Assert.Equal([1.8f, 1.4f], manual.Get(Controls.ColourGains));
+        Assert.False(manual.Get(Controls.AwbEnable));
         Assert.False(manual.Contains(Controls.AwbMode));
 
         // A mode alone leaves earlier fixed gains in force, so automatic also re-enables auto white balance.
@@ -121,14 +123,14 @@ public class OptionsTranslationTests
     }
 
     [Fact]
-    public void A_flicker_period_turns_manual_flicker_avoidance_on_and_zero_turns_it_off()
+    public void A_flicker_period_turns_manual_flicker_avoidance_on_and_off_turns_it_off()
     {
         // The period is ignored unless AeFlickerMode is Manual.
-        var on = Translate(new CameraControls { FlickerPeriod = TimeSpan.FromMilliseconds(10) });
+        var on = Translate(new CameraControls { Flicker = FlickerMode.Manual(TimeSpan.FromMilliseconds(10)) });
         Assert.Equal(AeFlickerMode.Manual, on.Get(Controls.AeFlickerMode));
         Assert.Equal(10_000, on.Get(Controls.AeFlickerPeriod));        // microseconds
 
-        var off = Translate(new CameraControls { FlickerPeriod = TimeSpan.Zero });
+        var off = Translate(new CameraControls { Flicker = FlickerMode.Off });
         Assert.Equal(AeFlickerMode.Off, off.Get(Controls.AeFlickerMode));
         Assert.False(off.Contains(Controls.AeFlickerPeriod));
     }
@@ -205,5 +207,57 @@ public class OptionsTranslationTests
 
         Assert.Equal(new Size(2028, 1520), config.Sensor.OutputSize);
         Assert.Equal(12, config.Sensor.BitDepth);
+    }
+
+    [Fact]
+    public void Turning_automatic_back_on_drops_the_manual_values_it_replaces()
+    {
+        // Kept, an old manual value would go out with the switch (in the next request, or replayed after a restart)
+        // and win: an exposure sets its mode to manual, and the camera applies colour gains after AwbEnable.
+        var settings = new PendingControls();
+        new CameraControls
+        {
+            Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)),
+            Gain = GainMode.Fixed(2f),
+            WhiteBalance = WhiteBalance.Manual(1.8f, 1.4f),
+        }.ApplyTo(settings);
+        new CameraControls { AutoExposure = true, AutoWhiteBalance = true }.ApplyTo(settings);
+
+        Assert.False(settings.Contains(Controls.ExposureTime));
+        Assert.False(settings.Contains(Controls.AnalogueGain));
+        Assert.False(settings.Contains(Controls.ColourGains));
+
+        // In one set of options, the manual value still wins, as libcamera's precedence has it.
+        var both = Translate(new CameraControls { AutoExposure = true, Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)) });
+        Assert.Equal(8_000, both.Get(Controls.ExposureTime));
+    }
+
+    [Fact]
+    public void The_set_replayed_after_a_restart_drops_manual_values_when_automatic_comes_back()
+    {
+        // What the session keeps and replays on a restart: every set merged in, in order.
+        var applied = new PendingControls();
+        void Merge(CameraControls controls) => applied.SetControls(Translate(controls));
+
+        // Automatic already on, then a fixed exposure, then automatic again: the switch is unchanged, the exposure goes.
+        Merge(new CameraControls { AutoExposure = true });
+        Merge(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)) });
+        Merge(new CameraControls { AutoExposure = true });
+        Assert.False(applied.Contains(Controls.ExposureTime));
+
+        // A fixed exposure that comes in with the switch is newer, and stays.
+        Merge(new CameraControls { AutoExposure = true, Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(10)) });
+        Assert.Equal(10_000, applied.Get(Controls.ExposureTime));
+    }
+
+    [Fact]
+    public void A_value_that_would_mean_automatic_is_refused_where_a_fixed_one_is_asked_for()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ExposureMode.Fixed(TimeSpan.FromTicks(5)));     // reaches the camera as 0 µs
+        Assert.Throws<ArgumentOutOfRangeException>(() => GainMode.Fixed(0f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FlickerMode.Manual(TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => WhiteBalance.Manual(1.8f, 0f));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { FrameRate = 0 }.ThrowIfInvalid("options"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { FrameRate = (0, 30) }.ThrowIfInvalid("options"));
     }
 }

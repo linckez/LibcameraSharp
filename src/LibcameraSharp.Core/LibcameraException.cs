@@ -28,17 +28,11 @@ public class LibcameraException : Exception
         Operation = operation;
     }
 
-    /// <summary>Creates an exception with only a message; <see cref="Operation"/> is empty.</summary>
-    public LibcameraException(string message) : base("libcamera: " + message)
-    {
-        Operation = "";
-    }
-
     /// <summary>What was being attempted.</summary>
     public string Operation { get; }
 
-    /// <summary>Linux errno, or 0 when not applicable.</summary>
-    public int Errno { get; }
+    /// <summary>Linux errno, or null when libcamera reported none.</summary>
+    public int? Errno { get; }
 
     /// <summary>Throws when <paramref name="ret"/> is negative, following libcamera's "negative errno" convention.</summary>
     internal static void ThrowIfError(int ret, string operation)

@@ -10,7 +10,7 @@ static class Champions
     static readonly PhotoOptions Night = new()
     {
         Streams = new StreamSettings { CaptureSize = new Size(4056, 3040) },
-        Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(80), Gain = 8.0f, FrameRate = (5, 30) },
+        Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(80)), Gain = GainMode.Fixed(8.0f), FrameRate = (5, 30) },
         Encoding = PhotoEncoding.Jpeg,
         JpegQuality = 95,
         Exif = new ExifData { Artist = "A. Rossi", Copyright = "CC-BY" },
@@ -80,8 +80,8 @@ static class Champions
     {
         CameraControls manual = new()
         {
-            Exposure = TimeSpan.FromMilliseconds(8),
-            Gain = 2.0f,
+            Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)),
+            Gain = GainMode.Fixed(2.0f),
             WhiteBalance = WhiteBalance.Manual(redGain: 1.8f, blueGain: 1.4f),
             Focus = FocusMode.AtMetres(0.5),
             Zoom = new RegionOfInterest(0.25, 0.25, 0.5, 0.5),
@@ -90,7 +90,7 @@ static class Champions
         Photo photo = await camera.CapturePhotoAsync(new PhotoOptions { Controls = manual }, ct);
         Console.WriteLine($"asked 8 ms; got {photo.Metadata.ExposureTime?.TotalMilliseconds} ms at gain {photo.Metadata.AnalogueGain}");
 
-        camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(12) });
+        camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(12)) });
 
         (double Min, double Max, double? Default)? gain = camera.Capabilities.Range(Controls.AnalogueGain);
         Console.WriteLine($"this sensor goes to {gain?.Max}x");

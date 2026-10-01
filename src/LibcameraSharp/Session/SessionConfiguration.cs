@@ -12,14 +12,14 @@ namespace LibcameraSharp;
 /// <remarks>Not libcamera's <see cref="LibcameraSharp.Advanced.CameraConfiguration"/>; <c>Configure</c> builds that from this.</remarks>
 internal sealed class SessionConfiguration
 {
-    /// <summary>Buffers per stream.</summary>
-    public int BufferCount { get; set; } = 4;
+    /// <summary>Buffers per stream; each use's factory sets it.</summary>
+    public int BufferCount { get; set; }
 
     /// <summary>Image orientation to request.</summary>
     public Orientation Transform { get; set; } = Orientation.Rotate0;
 
     /// <summary>Colour space for the main stream, or null to let libcamera choose, as video does.</summary>
-    public ColorSpace? ColourSpace { get; set; } = ColorSpace.Sycc;
+    public ColorSpace? ColourSpace { get; set; }
 
     /// <summary>Controls applied when the camera starts with this configuration.</summary>
     public PendingControls Controls { get; set; } = new();

@@ -48,6 +48,21 @@ public class MockingTests
         Assert.Equal([0xFF, 0xD8], body.ToArray()[..2]);             // JPEG SOI
     }
 
+    /// <summary>A frame becomes a live view's JPEG without FFmpeg: the frame's size, and no EXIF (no APP1 after the SOI).</summary>
+    [Fact]
+    public void A_factory_frame_encodes_as_a_jpeg_with_no_exif()
+    {
+        using var frame = LibcameraSharpModelFactory.VideoFrame([new byte[4 * 4]], Tiny);
+
+        var jpeg = frame.ToJpeg();
+
+        Assert.Equal([0xFF, 0xD8], jpeg[..2]);                       // SOI
+        Assert.NotEqual([0xFF, 0xE1], jpeg[2..4]);                   // not APP1
+        using var decoded = SKBitmap.Decode(jpeg);
+        Assert.Equal((2, 2), (decoded.Width, decoded.Height));
+        Assert.Throws<ArgumentOutOfRangeException>(() => frame.ToJpeg(quality: 0));
+    }
+
     // A write-only stream that takes only asynchronous writes and flushes, as Kestrel's response body does by default.
     private sealed class AsynchronousOnlyStream : Stream
     {

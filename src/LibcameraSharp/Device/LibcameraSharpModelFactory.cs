@@ -46,7 +46,7 @@ public static class LibcameraSharpModelFactory
         if (lux is { } brightness)
             values.Add(new(Controls.Lux, brightness));
         if (timestamp is { } time)
-            values.Add(new(Controls.SensorTimestamp, time.Ticks * 100));
+            values.Add(new(Controls.SensorTimestamp, time.Ticks * TimeSpan.NanosecondsPerTick));
         if (frameDuration is { } duration)
             values.Add(new(Controls.FrameDuration, (long)duration.TotalMicroseconds));
         if (scalerCrop is { } crop)
@@ -85,7 +85,7 @@ public static class LibcameraSharpModelFactory
     /// <param name="stride">Bytes from one row of the first plane to the next; the narrowest the format allows when not given.</param>
     /// <param name="metadata">What the camera "did"; none when not given.</param>
     /// <param name="options">The options it was "taken" with, which decide how it saves; the defaults when not given.</param>
-    /// <param name="cameraModel">The camera model written into the EXIF data.</param>
+    /// <param name="cameraModel">The camera model written into the EXIF data, or null to leave the tag out.</param>
     /// <exception cref="NotSupportedException">The format is neither RGB nor YUV.</exception>
     /// <exception cref="ArgumentException"><paramref name="pixels"/> is too short for the size, format and stride.</exception>
     public static Photo Photo(
@@ -95,7 +95,7 @@ public static class LibcameraSharpModelFactory
         int? stride = null,
         CaptureMetadata? metadata = null,
         PhotoOptions? options = null,
-        string cameraModel = "")
+        string? cameraModel = null)
     {
         ArgumentNullException.ThrowIfNull(pixels);
         var chosen = format ?? PixelFormats.XRGB8888;
@@ -186,19 +186,19 @@ public static class LibcameraSharpModelFactory
     /// <param name="preview">The second stream, if any.</param>
     /// <param name="raw">The raw stream, if any.</param>
     /// <param name="colourSpace">The colour space of the processed streams.</param>
-    /// <param name="orientation">How the image is rotated and flipped.</param>
-    /// <param name="bufferCount">How many buffers each stream has.</param>
+    /// <param name="orientation">How the image is rotated and flipped, or null for a camera not yet set up.</param>
+    /// <param name="bufferCount">How many buffers each stream has, or null for a camera not yet set up.</param>
     /// <exception cref="ArgumentException">A property key is a control, or a control key is a property.</exception>
     public static CameraDescription CameraDescription(
-        string id = "",
+        string id,
         IEnumerable<KeyValuePair<ControlKey, object>>? properties = null,
         IEnumerable<ControlLimits>? controls = null,
         ConfiguredStream? capture = null,
         ConfiguredStream? preview = null,
         ConfiguredStream? raw = null,
         ColorSpace? colourSpace = null,
-        Orientation orientation = Orientation.Rotate0,
-        int bufferCount = 0)
+        Orientation? orientation = null,
+        int? bufferCount = null)
     {
         List<KeyValuePair<ControlKey, object>> reported = [.. properties ?? []];
         List<ControlLimits> limits = [.. controls ?? []];
@@ -237,9 +237,9 @@ public static class LibcameraSharpModelFactory
     /// <summary>Creates a <see cref="LibcameraSharp.ConfiguredStream"/> for a fake <see cref="LibcameraSharp.CameraDescription"/>.</summary>
     /// <param name="size">Its size in pixels.</param>
     /// <param name="format">Its pixel format.</param>
-    /// <param name="stride">Bytes from one row to the next.</param>
+    /// <param name="stride">Bytes from one row to the next, or null for a compressed format.</param>
     /// <param name="frameSize">Bytes in one frame.</param>
-    public static ConfiguredStream ConfiguredStream(Size size, PixelFormat format, uint stride = 0, uint frameSize = 0) =>
+    public static ConfiguredStream ConfiguredStream(Size size, PixelFormat format, uint? stride = null, uint frameSize = 0) =>
         new(size, format, stride, frameSize);
 
     // Each plane's narrowest stride and its rows. Packed RGB is one plane; planar YUV has its chroma at half

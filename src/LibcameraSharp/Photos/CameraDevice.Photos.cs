@@ -53,7 +53,7 @@ public partial class CameraDevice
             var rawStream = frame.Config[SessionStream.Raw]!;
             raw = new RawImage(frame.MakeBuffer(SessionStream.Raw), metadata, rawStream, model,
                 rawStream.Format is { } format ? BayerFormat.FromPixelFormat(format) : null,
-                rawStream.Size ?? default);
+                rawStream.Size!.Value);                                         // set once configured
         }
 
         return new Photo(pixels, metadata, model, raw, options);
@@ -71,17 +71,19 @@ public partial class CameraDevice
     }
 
     // Half the sensor's active area, which most sensors bin to; with a photo size, the same field of
-    // view as the photo. 1280×960 when the camera reports no active area.
+    // view as the photo. The fallback size when the camera reports no active area.
     private Size ViewfinderSize(Size? photoSize)
     {
         if (Session.Facts.ActiveArea is not { } area)
-            return new Size(1280, 960);
+            return FallbackViewfinderSize;
 
         var size = new Size(area.Width / 2, area.Height / 2);
         if (photoSize is { Width: > 0, Height: > 0 } ratio)
             size = BoundedToAspectRatio(size, ratio);
-        return new Size(size.Width & ~1u, size.Height & ~1u);
+        return new Size(size.Width & ~1u, size.Height & ~1u);                  // even, which every format accepts
     }
+
+    private static readonly Size FallbackViewfinderSize = new(1280, 960);
 
     // The largest size within size that has ratio's aspect ratio.
     private static Size BoundedToAspectRatio(Size size, Size ratio)

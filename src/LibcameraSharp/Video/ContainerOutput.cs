@@ -12,8 +12,6 @@ namespace LibcameraSharp;
 /// <remarks>Expects timestamps in microseconds.</remarks>
 internal sealed unsafe class ContainerOutput : Output
 {
-    private static readonly AVRational MicrosecondTimeBase = new() { num = 1, den = 1_000_000 };
-
     // Encoded frames are tens of kilobytes, so the container writes through a buffer that holds one.
     private const int IoBufferSize = 64 * 1024;
 
@@ -23,10 +21,16 @@ internal sealed unsafe class ContainerOutput : Output
     // errno for "I/O error": what libav expects back from a write callback that could not write.
     private const int EIO = 5;
 
+    // The mov muxer's option that writes an MP4 as fragments, each with its own index, so it plays as it arrives.
+    private const string MovFlags = "movflags", FragmentedMp4 = "frag_keyframe+empty_moov+default_base_moof";
+
+    // The whence values libav passes to a seek callback, as C's stdio.h numbers them.
+    private const int SeekCur = 1, SeekEnd = 2;
+
     private readonly Stream? _stream;
     private readonly string? _path;
     private readonly bool _ownsStream;
-    private readonly string _formatName;
+    private readonly VideoContainer _container;
     private AVFormatContext* _format;
     private AVStream* _videoStream;
     private AVIOContext* _io;
@@ -41,31 +45,38 @@ internal sealed unsafe class ContainerOutput : Output
     private bool _useFragments;
     private bool _headerWritten;
     private bool _seenKeyframe;
-    private long _firstTimestamp = -1;
+    private long? _firstTimestamp;
 
     /// <summary>Muxes into <paramref name="stream"/> — a response body, a socket, a <see cref="MemoryStream"/>.</summary>
     /// <param name="stream">Where the container is written. Disposed with this output only when <paramref name="ownsStream"/> is set.</param>
-    /// <param name="format">libav muxer name: <c>mp4</c>, <c>matroska</c> or <c>mpegts</c>.</param>
+    /// <param name="container">The container to write.</param>
     /// <param name="ownsStream">Dispose <paramref name="stream"/> when recording stops.</param>
     /// <remarks>An MP4 into a stream that cannot seek is written fragmented, so it plays as it arrives.</remarks>
-    public ContainerOutput(Stream stream, string format, bool ownsStream = false)
+    public ContainerOutput(Stream stream, VideoContainer container, bool ownsStream = false)
     {
-        ArgumentException.ThrowIfNullOrEmpty(format);
         _stream = stream;
-        _formatName = format;
+        _container = container;
         _ownsStream = ownsStream;
     }
 
     /// <summary>Muxes into the file at <paramref name="path"/>, which libav opens and writes itself.</summary>
     /// <param name="path">The file to write, created or replaced.</param>
-    /// <param name="format">libav muxer name: <c>mp4</c>, <c>matroska</c> or <c>mpegts</c>.</param>
-    public ContainerOutput(string path, string format)
+    /// <param name="container">The container to write.</param>
+    public ContainerOutput(string path, VideoContainer container)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
-        ArgumentException.ThrowIfNullOrEmpty(format);
         _path = path;
-        _formatName = format;
+        _container = container;
     }
+
+    // libav's muxer name for each container.
+    private string MuxerName => _container switch
+    {
+        VideoContainer.Mp4 => "mp4",
+        VideoContainer.Matroska => "matroska",
+        VideoContainer.MpegTs => "mpegts",
+        _ => throw new ArgumentOutOfRangeException(nameof(_container), _container, "Not a container libav writes."),
+    };
 
     /// <inheritdoc/>
     /// <remarks>The muxer says so itself: MP4 and Matroska keep the headers, MPEG-TS carries them in the stream.</remarks>
@@ -74,7 +85,7 @@ internal sealed unsafe class ContainerOutput : Output
         get
         {
             Libav.Initialise();
-            var format = ffmpeg.av_guess_format(_formatName, null, null);
+            var format = ffmpeg.av_guess_format(MuxerName, null, null);
             return format is not null && (format->flags & ffmpeg.AVFMT_GLOBALHEADER) != 0;
         }
     }
@@ -84,7 +95,7 @@ internal sealed unsafe class ContainerOutput : Output
     {
         Libav.Initialise();
         AVFormatContext* context = null;
-        Libav.Check(ffmpeg.avformat_alloc_output_context2(&context, null, _formatName, null), $"open {Destination} for writing");
+        Libav.Check(ffmpeg.avformat_alloc_output_context2(&context, null, MuxerName, null), $"open {Destination} for writing");
         _format = context;
 
         try
@@ -141,11 +152,11 @@ internal sealed unsafe class ContainerOutput : Output
             stream.CodecExtraData.Span.CopyTo(new Span<byte>(parameters->extradata, stream.CodecExtraData.Length));
         }
 
-        _videoStream->time_base = MicrosecondTimeBase;
-        _videoStream->avg_frame_rate = new AVRational { num = (int)Math.Round(stream.FrameRate * 1000), den = 1000 };
+        _videoStream->time_base = Libav.MicrosecondTimeBase;
+        _videoStream->avg_frame_rate = Libav.FrameRate(stream.FrameRate);
 
         // A plain MP4 seeks back at the end to write its index; a stream that cannot seek gets fragments instead.
-        _useFragments = _formatName == "mp4" && _stream is { CanSeek: false };
+        _useFragments = _container == VideoContainer.Mp4 && _stream is { CanSeek: false };
 
         // A file libav opens and writes itself; a stream goes through the write and seek callbacks.
         if (_path is not null)
@@ -167,9 +178,8 @@ internal sealed unsafe class ContainerOutput : Output
             return;
 
         var microseconds = timestamp ?? 0;
-        if (_firstTimestamp < 0)
-            _firstTimestamp = microseconds;
-        var pts = ffmpeg.av_rescale_q(microseconds - _firstTimestamp, MicrosecondTimeBase, _videoStream->time_base);
+        _firstTimestamp ??= microseconds;
+        var pts = ffmpeg.av_rescale_q(microseconds - _firstTimestamp.Value, Libav.MicrosecondTimeBase, _videoStream->time_base);
 
         try
         {
@@ -215,7 +225,7 @@ internal sealed unsafe class ContainerOutput : Output
         _packet = null;
         _videoStream = null;
         (_pipe, _drain) = (null, null);
-        (_headerWritten, _seenKeyframe, _firstTimestamp) = (false, false, -1);
+        (_headerWritten, _seenKeyframe, _firstTimestamp) = (false, false, null);
 
         try
         {
@@ -257,7 +267,7 @@ internal sealed unsafe class ContainerOutput : Output
         }
     }
 
-    private string Destination => _path ?? $"the {_formatName} stream";
+    private string Destination => _path ?? $"the {MuxerName} stream";
 
     /// <summary>Hands libav a managed stream to write through, instead of a filename it opens itself.</summary>
     private void OpenManagedStream()
@@ -289,7 +299,7 @@ internal sealed unsafe class ContainerOutput : Output
     {
         AVDictionary* options = null;
         if (_useFragments)
-            ffmpeg.av_dict_set(&options, "movflags", "frag_keyframe+empty_moov+default_base_moof", 0);
+            ffmpeg.av_dict_set(&options, MovFlags, FragmentedMp4, 0);
 
         var result = ffmpeg.avformat_write_header(_format, &options);
         ffmpeg.av_dict_free(&options);
@@ -338,8 +348,8 @@ internal sealed unsafe class ContainerOutput : Output
             var origin = (whence & ~ffmpeg.AVSEEK_FORCE) switch
             {
                 ffmpeg.AVSEEK_SIZE => (SeekOrigin?)null,
-                1 => SeekOrigin.Current,
-                2 => SeekOrigin.End,
+                SeekCur => SeekOrigin.Current,
+                SeekEnd => SeekOrigin.End,
                 _ => SeekOrigin.Begin,
             };
             return origin is { } from ? output._stream!.Seek(offset, from) : output._stream!.Length;

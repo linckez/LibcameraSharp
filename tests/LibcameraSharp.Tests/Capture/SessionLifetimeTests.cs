@@ -86,7 +86,7 @@ public class SessionLifetimeTests
         await using var session = new CameraSession(manager);
         Assert.SkipUnless(session.Facts.Capabilities.Supports(Controls.AnalogueGain), "this camera has no analogue gain");
 
-        var setUp = await session.SetUpAsync(new StreamSettings(), new CameraControls { Gain = 4.0f }, CameraUse.Frames);
+        var setUp = await session.SetUpAsync(new StreamSettings(), new CameraControls { Gain = GainMode.Fixed(4.0f) }, CameraUse.Frames);
         using (var landed = await session.NextFrameAsync(setUp.Target, Ct))
             Assert.Equal(4.0f, landed.Metadata.Get(Controls.AnalogueGain), 0.1f);
 

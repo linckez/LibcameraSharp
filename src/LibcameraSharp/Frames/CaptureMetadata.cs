@@ -37,7 +37,7 @@ public sealed class CaptureMetadata
     /// <summary>When the frame was captured: time since the system booted, including suspend (<c>CLOCK_BOOTTIME</c>).</summary>
     /// <remarks>libcamera <c>Controls.SensorTimestamp</c>, in nanoseconds — the one thing every pipeline reports.</remarks>
     public TimeSpan? Timestamp =>
-        _metadata.TryGet(Controls.SensorTimestamp, out var nanoseconds) ? TimeSpan.FromTicks(nanoseconds / 100) : null;
+        _metadata.TryGet(Controls.SensorTimestamp, out var nanoseconds) ? TimeSpan.FromTicks(nanoseconds / TimeSpan.NanosecondsPerTick) : null;
 
     /// <summary>How long the frame took, end to end.</summary>
     public TimeSpan? FrameDuration =>

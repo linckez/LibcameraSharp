@@ -39,12 +39,17 @@ second encoding, take a second photo.
 ## EXIF
 
 A JPEG carries what the camera did: exposure time, ISO, the focus distance when the lens reports one, and
-when the photo was saved. Add descriptive tags of your own; `Make`, `Model` and `Software` replace the generated ones:
+when the photo was saved. Add descriptive tags of your own, and where it was taken; `Make`, `Model` and `Software`
+replace the generated ones:
 
 ```csharp
 var tagged = new PhotoOptions
 {
-    Exif = new ExifData { Artist = "A. Rossi", Copyright = "CC-BY", Model = "Garden cam" },
+    Exif = new ExifData
+    {
+        Artist   = "A. Rossi", Copyright = "CC-BY", Model = "Garden cam",
+        Location = new GpsLocation(55.6761, 12.5683, altitude: 12.3),   // degrees north and east, metres above sea level
+    },
 };
 ```
 

@@ -13,6 +13,7 @@ public sealed class VideoFrame : IDisposable
     private readonly CapturedFrame? _request;
     private readonly MappedFrame? _mapped;
     private readonly StreamDescription? _stream;
+    private readonly SessionStream _streamName;
 
     // A frame built from arrays, by LibcameraSharpModelFactory: no buffer to give back.
     private readonly byte[][]? _planes;
@@ -29,6 +30,7 @@ public sealed class VideoFrame : IDisposable
         _request = request;
         _mapped = new MappedFrame(request, stream);
         _stream = request.Config[stream]!;
+        _streamName = stream;
     }
 
     internal VideoFrame(byte[][] planes, int[] strides, Size size, PixelFormat format, uint sequence, CaptureMetadata metadata) =>
@@ -82,6 +84,53 @@ public sealed class VideoFrame : IDisposable
 
     /// <summary>Copies a plane, for when you need the bytes to outlive the frame.</summary>
     public byte[] ToArray(int plane = 0) => Plane(plane).ToArray();
+
+    /// <summary>
+    /// Encodes the frame as a JPEG, such as for a live view: no EXIF, and done before this returns, so the frame can
+    /// be disposed straight after.
+    /// </summary>
+    /// <param name="quality">JPEG quality, 1 to 100. The default suits a live view; a photo's is 90.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="quality"/> isn't 1 to 100.</exception>
+    /// <exception cref="ObjectDisposedException">The frame has been disposed.</exception>
+    /// <exception cref="NotSupportedException">The frame's format is neither RGB nor YUV.</exception>
+    public byte[] ToJpeg(int quality = DefaultJpegQuality)
+    {
+        if (quality is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(quality), quality, "JPEG quality runs from 1 to 100.");
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        using var bitmap = FrameBitmap.FromPixels(_request is { } request ? request.CopyPixels(_streamName) : JoinPlanes());
+        return JpegWriter.Encode(bitmap, quality);
+    }
+
+    // A live view's JPEG quality when none is given, lighter than a photo's.
+    private const int DefaultJpegQuality = 50;
+
+    // A frame built from arrays, packed into one buffer the way a camera's frame is laid out: the first plane's
+    // stride for every row, half of it for planar YUV420's chroma. Arrays given their own strides are repacked, and
+    // an odd height gets its last chroma row too, since the converter rounds the chroma's rows up.
+    private FramePixels JoinPlanes()
+    {
+        var stride = _strides![0];
+        var planarYuv = _format == PixelFormats.YUV420 || _format == PixelFormats.YVU420;
+        var height = (int)_size.Height;
+        var packed = new List<byte>();
+        for (var i = 0; i < _planes!.Length; i++)
+        {
+            var (packedStride, rows) = i == 0 ? (stride, height) : (planarYuv ? stride / 2 : stride, (height + 1) / 2);
+            var row = new byte[packedStride];
+            for (var y = 0; y < rows; y++)
+            {
+                Array.Clear(row);
+                var from = y * _strides[i];
+                if (from < _planes[i].Length)
+                    _planes[i].AsSpan(from, Math.Min(Math.Min(packedStride, _strides[i]), _planes[i].Length - from)).CopyTo(row);
+                packed.AddRange(row);
+            }
+        }
+        packed.AddRange(new byte[stride]);                                     // and an odd width's last chroma byte
+        return new FramePixels([.. packed], _format, _size, stride, colourSpace: null);
+    }
 
     /// <summary>Returns the frame's buffer to the camera.</summary>
     public void Dispose()

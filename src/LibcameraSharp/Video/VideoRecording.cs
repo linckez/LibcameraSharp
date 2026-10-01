@@ -56,12 +56,17 @@ public class VideoRecording : IAsyncDisposable
     /// Stops recording: flushes the encoder and closes the output. The camera stops when no other recording is
     /// running. Every call waits for the same stop, disposed or not.
     /// </summary>
+    /// <param name="cancellationToken">
+    /// Ends the wait, not the stop: the recording still stops and its file is still finished. A failure after a
+    /// cancelled wait is reported by the next <see cref="StopAsync"/>.
+    /// </param>
     /// <exception cref="IOException">Writing failed while recording, such as a full disk or a client hanging up.</exception>
-    public virtual Task StopAsync()
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before the stop finished; the stop carries on.</exception>
+    public virtual Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.CompareExchange(ref _stopping, 1, 0) == 0)
             _ = RunStopAsync();
-        return _stopped.Task;
+        return _stopped.Task.WaitAsync(cancellationToken);
     }
 
     /// <summary>Stops the recording, as <see cref="StopAsync"/> does, but never throws.</summary>

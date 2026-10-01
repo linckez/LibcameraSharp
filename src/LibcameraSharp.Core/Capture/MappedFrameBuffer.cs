@@ -40,12 +40,12 @@ public sealed class MappedFrameBuffer : IDisposable
         for (var i = 0; i < planes.Count; i++)
         {
             var plane = planes[i];
-            if (plane.Offset < 0)
+            if (plane.Offset is not { } offset)
                 throw new InvalidOperationException($"Plane {i} has no valid offset, so it can't be mapped.");
 
-            _planes[i] = new PlaneView(plane.Fd, plane.Offset, plane.Length);
-            var alignedStart = plane.Offset - plane.Offset % pageSize;
-            var end = plane.Offset + plane.Length;
+            _planes[i] = new PlaneView(plane.Fd, offset, plane.Length);
+            var alignedStart = offset - offset % pageSize;
+            var end = offset + plane.Length;
             windows[plane.Fd] = windows.TryGetValue(plane.Fd, out var w)
                 ? (Math.Min(w.Start, alignedStart), Math.Max(w.End, end))
                 : (alignedStart, end);

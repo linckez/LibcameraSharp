@@ -32,6 +32,7 @@ internal sealed class PendingControls : IEnumerable<KeyValuePair<ControlKey, obj
     public PendingControls Set<T>(Control<T> key, T value)
     {
         Validate(key);
+        DropManualValuesOnAuto(key, value!, keep: null);
         Store(key, value!);
         return this;
     }
@@ -70,6 +71,11 @@ internal sealed class PendingControls : IEnumerable<KeyValuePair<ControlKey, obj
         // Every key is checked before any is stored, so a set that fails leaves this one as it was.
         foreach (var (key, _) in other._values)
             Validate(key);
+
+        // An automatic switch drops the older manual values first, but never one that comes in with it: that one is
+        // newer, and wins.
+        foreach (var (key, value) in other._values)
+            DropManualValuesOnAuto(key, value, keep: other);
         foreach (var (key, value) in other._values)
             Store(key, value);
     }
@@ -90,6 +96,28 @@ internal sealed class PendingControls : IEnumerable<KeyValuePair<ControlKey, obj
             return;
         _values[key] = value;
         _version++;
+    }
+
+    // Turning automatic exposure or white balance back on drops the manual values it replaces. Kept, they would go
+    // out with it (merged into the next request, or replayed when the camera restarts), and a manual value wins:
+    // an explicit exposure or gain sets its mode to manual, which takes precedence over AeEnable, and the camera
+    // applies colour gains after AwbEnable. It runs whether or not the switch was already on. Values in keep stay.
+    private void DropManualValuesOnAuto(ControlKey key, object value, PendingControls? keep)
+    {
+        if (value is not true)
+            return;
+        ControlKey[] replaced;
+        if (key.Id == LibcameraSharp.Controls.AeEnable.Id)
+            replaced = [LibcameraSharp.Controls.ExposureTime, LibcameraSharp.Controls.AnalogueGain];
+        else if (key.Id == LibcameraSharp.Controls.AwbEnable.Id)
+            replaced = [LibcameraSharp.Controls.ColourGains];
+        else
+            return;
+        foreach (var manual in replaced)
+        {
+            if (keep?.Contains(manual) != true)
+                Remove(manual);
+        }
     }
 
     /// <inheritdoc/>

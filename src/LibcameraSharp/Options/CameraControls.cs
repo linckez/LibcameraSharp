@@ -6,16 +6,16 @@ namespace LibcameraSharp;
 /// </summary>
 /// <remarks>
 /// Only what you set is sent; anything left null stays as the camera has it. To return exposure or
-/// gain to automatic, set it to zero.
+/// gain to automatic, set <see cref="ExposureMode.Auto"/> or <see cref="GainMode.Auto"/>.
 /// </remarks>
 public sealed record CameraControls
 {
-    /// <summary>How long each frame is exposed. <see cref="TimeSpan.Zero"/> returns to automatic.</summary>
-    public TimeSpan? Exposure { get; init; }
+    /// <summary>How long each frame is exposed: <see cref="ExposureMode.Auto"/>, or <see cref="ExposureMode.Fixed"/> with a time.</summary>
+    public ExposureMode? Exposure { get; init; }
 
-    /// <summary>Analogue sensor gain, from 1.0 up. <c>0</c> returns to automatic.</summary>
+    /// <summary>Analogue sensor gain: <see cref="GainMode.Auto"/>, or <see cref="GainMode.Fixed"/> from 1.0 up.</summary>
     /// <remarks>The maximum depends on the sensor; ask <see cref="CameraDevice.Capabilities"/>.</remarks>
-    public float? Gain { get; init; }
+    public GainMode? Gain { get; init; }
 
     /// <summary>Frames per second, or a range the camera may vary within.</summary>
     /// <remarks>A fixed rate also caps exposure at one frame's duration.</remarks>
@@ -51,10 +51,16 @@ public sealed record CameraControls
     /// <summary>Which part of the scene automatic exposure meters.</summary>
     public AeMeteringMode? Metering { get; init; }
 
-    /// <summary>Turns automatic exposure on or off. A fixed <see cref="Exposure"/> or <see cref="Gain"/> already turns it off.</summary>
+    /// <summary>
+    /// Turns automatic exposure and gain on or off together. Off holds both where automatic exposure left them, so
+    /// frames taken after it settles all match. A fixed <see cref="Exposure"/> or <see cref="Gain"/> turns off only its own.
+    /// </summary>
     public bool? AutoExposure { get; init; }
 
-    /// <summary>Turns automatic white balance on or off. Fixed <see cref="WhiteBalance"/> gains already turn it off.</summary>
+    /// <summary>
+    /// Turns automatic white balance on or off. Off holds the colour gains where it left them; fixed
+    /// <see cref="WhiteBalance"/> gains also turn it off.
+    /// </summary>
     public bool? AutoWhiteBalance { get; init; }
 
     /// <summary>How hard to denoise.</summary>
@@ -64,16 +70,16 @@ public sealed record CameraControls
     public HdrMode? Hdr { get; init; }
 
     /// <summary>
-    /// How fast the lights in the scene pulse, so automatic exposure avoids dark bands across the
-    /// picture: 10 ms where mains power is 50 Hz, 8.33 ms where it is 60 Hz. <see cref="TimeSpan.Zero"/>
-    /// turns flicker avoidance off.
+    /// Flicker avoidance: <see cref="FlickerMode.Manual"/> with how fast the lights in the scene pulse, so automatic
+    /// exposure avoids dark bands across the picture, or <see cref="FlickerMode.Off"/>.
     /// </summary>
-    public TimeSpan? FlickerPeriod { get; init; }
+    public FlickerMode? Flicker { get; init; }
 
     /// <summary>A 3×3 colour correction matrix, replacing the tuning file's.</summary>
     /// <remarks>
     /// Takes effect only with fixed white balance gains (<see cref="LibcameraSharp.WhiteBalance.Manual"/>)
-    /// set in the same options: the camera ignores a matrix that arrives while white balance is automatic.
+    /// set in the same options, or with <see cref="AutoWhiteBalance"/> off: the camera ignores a matrix that arrives
+    /// while white balance is automatic.
     /// </remarks>
     public ColourCorrectionMatrix? ColourCorrectionMatrix { get; init; }
 
@@ -115,23 +121,34 @@ public sealed record CameraControls
                 skipped.Add(key.Name);
         }
 
-        // A zero exposure or gain means automatic; ControlPatching sets the matching mode when the request is built.
+        // Turning an automatic switch on goes first: it drops earlier manual values, and a manual value in these same
+        // options then wins over it, as libcamera's own precedence has it. Turning one off goes in its usual place.
+        if (AutoExposure is true)
+            Put(Controls.AeEnable, true);
+        if (AutoWhiteBalance is true)
+            Put(Controls.AwbEnable, true);
+
+        // Automatic goes out as a zero, which ControlPatching turns into the matching mode when the request is built.
         if (Exposure is { } exposure)
-            Put(Controls.ExposureTime, (int)exposure.TotalMicroseconds);
+            Put(Controls.ExposureTime, exposure.Microseconds);
         if (Gain is { } gain)
-            Put(Controls.AnalogueGain, gain);
-        if (FrameRate is { Max: > 0 } frameRate)
+            Put(Controls.AnalogueGain, gain.Value);
+        if (FrameRate is { } frameRate)
             Put(Controls.FrameDurationLimits, frameRate.ToDurationLimits());
 
         if (WhiteBalance is { } whiteBalance)
         {
-            if (whiteBalance.IsManual)
-                Put(Controls.ColourGains, [whiteBalance.RedGain, whiteBalance.BlueGain]);
-            else
+            // Fixed gains apply only with automatic white balance off, so that is sent with them.
+            if (whiteBalance is { RedGain: { } red, BlueGain: { } blue })
+            {
+                Put(Controls.AwbEnable, false);
+                Put(Controls.ColourGains, [red, blue]);
+            }
+            else if (whiteBalance.Mode is { } mode)
             {
                 // A mode alone does not undo earlier fixed gains; enabling auto white balance does.
                 Put(Controls.AwbEnable, true);
-                Put(Controls.AwbMode, whiteBalance.Mode);
+                Put(Controls.AwbMode, mode);
             }
         }
 
@@ -156,27 +173,27 @@ public sealed record CameraControls
             Put(Controls.Sharpness, sharpness);
         if (ExposureValue is { } exposureValue)
             Put(Controls.ExposureValue, exposureValue);
-        if (AutoExposure is { } autoExposure)
-            Put(Controls.AeEnable, autoExposure);
-        if (AutoWhiteBalance is { } autoWhiteBalance)
-            Put(Controls.AwbEnable, autoWhiteBalance);
+        if (AutoExposure is false)
+            Put(Controls.AeEnable, false);
+        if (AutoWhiteBalance is false)
+            Put(Controls.AwbEnable, false);
         if (Metering is { } metering)
             Put(Controls.AeMeteringMode, metering);
         if (Denoise is { } denoise)
             Put(Controls.Draft.NoiseReductionMode, denoise);
         if (Hdr is { } hdr)
             Put(Controls.HdrMode, hdr);
-        // The period is only used in manual flicker mode, so both are sent; zero turns it off.
-        if (FlickerPeriod is { } flicker)
+        // The period is only used in manual flicker mode, so both are sent.
+        if (Flicker is { } flicker)
         {
-            if (flicker == TimeSpan.Zero)
+            if (flicker.Period is { } period)
             {
-                Put(Controls.AeFlickerMode, AeFlickerMode.Off);
+                Put(Controls.AeFlickerMode, AeFlickerMode.Manual);
+                Put(Controls.AeFlickerPeriod, (int)period.TotalMicroseconds);
             }
             else
             {
-                Put(Controls.AeFlickerMode, AeFlickerMode.Manual);
-                Put(Controls.AeFlickerPeriod, (int)flicker.TotalMicroseconds);
+                Put(Controls.AeFlickerMode, AeFlickerMode.Off);
             }
         }
         if (ColourCorrectionMatrix is { } matrix)

@@ -7,15 +7,28 @@ namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
 {
+    // Each use's defaults: buffers, and the frame-duration limits in µs (shortest, longest).
+    private const int PreviewBufferCount = 4, StillBufferCount = 1, VideoBufferCount = 6;
+    private const long ShortestFrameDuration = 100;                // as fast as the sensor goes
+    private const long PreviewLongestFrameDuration = 83_333;      // live frames: 12 fps at the slowest
+    private const long StillLongestFrameDuration = 1_000_000_000; // photos: 1000 s, so a long exposure isn't cut short
+    private const long VideoFrameDuration = 33_333;               // recordings: a fixed 30 fps
+
+    /// <summary>The size live frames get when the options don't set one.</summary>
+    public static readonly Size DefaultPreviewSize = new(640, 480);
+
+    /// <summary>Recordings from this width, or this height, are tagged Rec. 709; smaller ones SMPTE 170M.</summary>
+    private static readonly Size HighDefinition = new(1280, 720);
+
     /// <summary>Defaults for live frames: 640×480 XBGR8888, four buffers, and a raw stream on Pi cameras.</summary>
     public SessionConfiguration CreatePreviewConfiguration(StreamDescription? main = null) =>
-        MakeConfiguration(Overlay(new StreamDescription(new Size(640, 480), PixelFormats.XBGR8888), main),
-            ColorSpace.Sycc, bufferCount: 4, FactoryControls(NoiseReductionMode.Minimal, [100, 83333]));
+        MakeConfiguration(Overlay(new StreamDescription(DefaultPreviewSize, PixelFormats.XBGR8888), main),
+            ColorSpace.Sycc, PreviewBufferCount, FactoryControls(NoiseReductionMode.Minimal, [ShortestFrameDuration, PreviewLongestFrameDuration]));
 
     /// <summary>Defaults for photos: the full sensor in BGR888, one buffer, high-quality noise reduction.</summary>
     public SessionConfiguration CreateStillConfiguration(StreamDescription? main = null) =>
         MakeConfiguration(Overlay(new StreamDescription(SensorResolution, PixelFormats.BGR888), main),
-            ColorSpace.Sycc, bufferCount: 1, FactoryControls(NoiseReductionMode.HighQuality, [100, 1_000_000_000]));
+            ColorSpace.Sycc, StillBufferCount, FactoryControls(NoiseReductionMode.HighQuality, [ShortestFrameDuration, StillLongestFrameDuration]));
 
     /// <summary>The size a recording gets when the options don't set one.</summary>
     public static readonly Size DefaultVideoSize = new(1280, 720);
@@ -24,19 +37,19 @@ internal sealed partial class CameraSession
     public SessionConfiguration CreateVideoConfiguration(StreamDescription? main = null)
     {
         var captureStream = Overlay(new StreamDescription(DefaultVideoSize, PixelFormats.XBGR8888), main);
-        return MakeConfiguration(captureStream, VideoColourSpace(captureStream.Size!.Value, motionJpeg: false), bufferCount: 6,
-            FactoryControls(NoiseReductionMode.Fast, [33333, 33333]));
+        return MakeConfiguration(captureStream, VideoColourSpace(captureStream.Size!.Value, motionJpeg: false), VideoBufferCount,
+            FactoryControls(NoiseReductionMode.Fast, [VideoFrameDuration, VideoFrameDuration]));
     }
 
     /// <summary>
-    /// The colour space a recording is tagged with: sYCC for motion JPEG, Rec. 709 from 1280 wide or
-    /// 720 high, SMPTE 170M below that.
+    /// The colour space a recording is tagged with: sYCC for motion JPEG, Rec. 709 from 1280 wide or 720 high (either
+    /// is enough), SMPTE 170M below that.
     /// </summary>
     public static ColorSpace VideoColourSpace(Size size, bool motionJpeg)
     {
         if (motionJpeg)
             return ColorSpace.Sycc;
-        return size.Width >= 1280 || size.Height >= 720 ? ColorSpace.Rec709 : ColorSpace.Smpte170m;
+        return size.Width >= HighDefinition.Width || size.Height >= HighDefinition.Height ? ColorSpace.Rec709 : ColorSpace.Smpte170m;
     }
 
     /// <summary>A configuration with the defaults for <paramref name="use"/>: full-resolution RGB for photos, 720p for video, VGA for frames.</summary>
@@ -62,7 +75,7 @@ internal sealed partial class CameraSession
     // The shared body of the three factories: 2-pixel alignment, and a raw stream on cameras that have one.
     private SessionConfiguration MakeConfiguration(StreamDescription captureStream, ColorSpace colourSpace, int bufferCount, PendingControls controls)
     {
-        captureStream.Align(optimal: false);
+        captureStream.Align();
         return new SessionConfiguration
         {
             ColourSpace = colourSpace, BufferCount = bufferCount, Controls = controls,

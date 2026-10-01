@@ -33,6 +33,9 @@ public readonly record struct PixelFormat(uint Fourcc, ulong Modifier)
         return Name ?? FourccText();
     }
 
+    // DRM's flag for a big-endian format, the fourcc's top bit (drm_fourcc.h DRM_FORMAT_BIG_ENDIAN).
+    private const uint BigEndianFlag = 1u << 31;
+
     private string FourccText()
     {
         // Render the four code bytes as characters; non-printables become '.', like libcamera.
@@ -42,7 +45,7 @@ public readonly record struct PixelFormat(uint Fourcc, ulong Modifier)
             var c = (char)((Fourcc >> (8 * i)) & 0x7F);
             sb.Append(char.IsControl(c) ? '.' : c);
         }
-        if ((Fourcc & 0x8000_0000u) != 0)
+        if ((Fourcc & BigEndianFlag) != 0)
             sb.Append("-BE");
         if (Modifier != 0)
             sb.Append($"-0x{Modifier:X}");

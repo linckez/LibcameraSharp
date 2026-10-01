@@ -28,7 +28,7 @@ public class LibavRecordingTests(ITestOutputHelper output)
         SkipOnTheVirtualCamera(manager);
         await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
-        using (var container = new ContainerOutput(File.Create(path), "mp4", ownsStream: true))
+        using (var container = new ContainerOutput(File.Create(path), VideoContainer.Mp4, ownsStream: true))
         {
             await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
             await session.StartRecordingAsync(encoder, container);
@@ -65,7 +65,7 @@ public class LibavRecordingTests(ITestOutputHelper output)
         SkipOnTheVirtualCamera(manager);
         await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
-        using (var container = new ContainerOutput(buffer, "mpegts"))
+        using (var container = new ContainerOutput(buffer, VideoContainer.MpegTs))
         {
             await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
             await session.StartRecordingAsync(encoder, container);
@@ -97,7 +97,7 @@ public class LibavRecordingTests(ITestOutputHelper output)
         SkipOnTheVirtualCamera(manager);
         await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
-        using (var container = new ContainerOutput(forwardOnly, "mp4"))
+        using (var container = new ContainerOutput(forwardOnly, VideoContainer.Mp4))
         {
             await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
             await session.StartRecordingAsync(encoder, container);
@@ -124,7 +124,7 @@ public class LibavRecordingTests(ITestOutputHelper output)
         SkipOnTheVirtualCamera(manager);
         await using var session = new CameraSession(manager);
         var encoder = new LibavH264Encoder();
-        using (var container = new ContainerOutput(buffer, "mp4"))
+        using (var container = new ContainerOutput(buffer, VideoContainer.Mp4))
         {
             await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
             await session.StartRecordingAsync(encoder, container);

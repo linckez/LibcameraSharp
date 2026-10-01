@@ -153,6 +153,6 @@ public class ConcurrentCaptureTests(ITestOutputHelper output)
         {
         }
 
-        protected override VideoStreamInfo StreamInfo => new(VideoCodec.Mjpeg, Width, Height, FrameRate ?? 30);
+        protected override VideoStreamInfo StreamInfo => new(VideoCodec.Mjpeg, Width, Height, FrameRate);
     }
 }

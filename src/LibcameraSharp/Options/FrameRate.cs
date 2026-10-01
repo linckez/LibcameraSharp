@@ -6,8 +6,7 @@ namespace LibcameraSharp;
 /// </summary>
 /// <remarks>
 /// A fixed rate also caps exposure: 30 fps allows at most 33 ms. Give a range to let the camera
-/// slow down in the dark. Zero means no limit: <c>FrameRate = 0</c> sends nothing, and a range
-/// starting at zero lets the camera slow down as far as it can.
+/// slow down in the dark. To leave the frame rate as the camera has it, leave it null.
 /// </remarks>
 public readonly record struct FrameRate(double Min, double Max)
 {
@@ -20,18 +19,15 @@ public readonly record struct FrameRate(double Min, double Max)
     /// <summary>True when this pins a single rate rather than allowing a range.</summary>
     public bool IsFixed => Min == Max;
 
-    // A rate is a finite number of frames a second, and a range can't end below where it starts; zero means no limit.
+    // A rate is a finite number of frames a second above zero, and a range can't end below where it starts.
     internal void ThrowIfInvalid(string paramName)
     {
-        if (!double.IsFinite(Min) || !double.IsFinite(Max) || Min < 0 || Max < Min)
-            throw new ArgumentOutOfRangeException(paramName, this, "A frame rate is a finite number of frames a second, 0 or more, and a range's Max can't be below its Min.");
+        if (!double.IsFinite(Min) || !double.IsFinite(Max) || Min <= 0 || Max < Min)
+            throw new ArgumentOutOfRangeException(paramName, this, "A frame rate is a finite number of frames a second above 0, and a range's Max can't be below its Min.");
     }
 
     /// <summary>The <c>FrameDurationLimits</c> pair, in microseconds, shortest first.</summary>
-    internal long[] ToDurationLimits() => [(long)(1_000_000 / Max), Min > 0 ? (long)(1_000_000 / Min) : LongestFrameDuration];
-
-    // The longest frame libcamera is asked to allow when there is no lower limit: 1000 s.
-    private const long LongestFrameDuration = 1_000_000_000;
+    internal long[] ToDurationLimits() => [(long)(1_000_000 / Max), (long)(1_000_000 / Min)];
 
     /// <inheritdoc/>
     public override string ToString() => IsFixed ? $"{Min:0.##} fps" : $"{Min:0.##}-{Max:0.##} fps";

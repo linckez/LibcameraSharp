@@ -1,12 +1,16 @@
+using System.Globalization;
 using System.Text;
 
 namespace LibcameraSharp;
 
-/// <summary>TIFF field types (TIFF 6.0 §2), which EXIF uses unchanged and libexif calls formats.</summary>
+/// <summary>
+/// TIFF field types (TIFF 6.0 §2), which EXIF uses unchanged and libexif calls formats; BigTIFF adds the 64-bit
+/// <see cref="Long8"/> and <see cref="Ifd8"/>, as libtiff's <c>TIFFDataType</c> numbers them.
+/// </summary>
 internal enum TiffType : ushort
 {
     Byte = 1, Ascii = 2, Short = 3, Long = 4, Rational = 5, SByte = 6, Undefined = 7,
-    SShort = 8, SLong = 9, SRational = 10, Float = 11, Double = 12,
+    SShort = 8, SLong = 9, SRational = 10, Float = 11, Double = 12, Long8 = 16, Ifd8 = 18,
 }
 
 /// <summary>The EXIF tags the SDK writes. Each knows its directory; the value's type is the one the <c>Set</c> overload called takes.</summary>
@@ -38,11 +42,38 @@ internal enum ExifTag : ushort
     SubjectDistance = 37382,
     /// <summary>User comment (EXIF, undefined bytes behind an 8-byte character code).</summary>
     UserComment = 37510,
+    /// <summary>The GPS directory's version, 2.2.0.0 (GPS, 4 bytes).</summary>
+    GpsVersionId = 0,
+    /// <summary><c>N</c> or <c>S</c> (GPS, ASCII).</summary>
+    GpsLatitudeRef = 1,
+    /// <summary>Degrees, minutes and seconds (GPS, 3 rationals).</summary>
+    GpsLatitude = 2,
+    /// <summary><c>E</c> or <c>W</c> (GPS, ASCII).</summary>
+    GpsLongitudeRef = 3,
+    /// <summary>Degrees, minutes and seconds (GPS, 3 rationals).</summary>
+    GpsLongitude = 4,
+    /// <summary>0 above sea level, 1 below (GPS, byte).</summary>
+    GpsAltitudeRef = 5,
+    /// <summary>Metres from sea level (GPS, rational).</summary>
+    GpsAltitude = 6,
+    /// <summary>The geodetic datum, <c>WGS-84</c> (GPS, ASCII).</summary>
+    GpsMapDatum = 18,
+}
+
+/// <summary>The EXIF block's directories a tag can go in; <see cref="Libexif.Set"/> maps them to libexif's numbers.</summary>
+internal enum ExifDirectory
+{
+    /// <summary>The main image's tags.</summary>
+    Ifd0,
+    /// <summary>The EXIF sub-directory: exposure, dates, comments.</summary>
+    Exif,
+    /// <summary>The GPS sub-directory.</summary>
+    Gps,
 }
 
 /// <summary>
 /// Descriptive EXIF tags to write into a saved JPEG, on top of the ones the camera's metadata provides; yours win on
-/// conflict: <c>new ExifData { Artist = "A. Rossi", UserComment = "55.68,12.57" }</c>.
+/// conflict: <c>new ExifData { Artist = "A. Rossi", Location = new GpsLocation(55.6761, 12.5683) }</c>.
 /// </summary>
 /// <remarks>
 /// Only the tags a camera can't know are here. What the camera measured (exposure time, ISO, subject distance) always
@@ -68,8 +99,11 @@ public sealed record ExifData
     /// <summary>Software that wrote the file, replacing the SDK's name and version.</summary>
     public string? Software { get; init; }
 
-    /// <summary>A comment of your own, such as a location or a batch number.</summary>
+    /// <summary>A comment of your own, such as a batch number.</summary>
     public string? UserComment { get; init; }
+
+    /// <summary>Where the photo was taken, written to EXIF's GPS directory.</summary>
+    public GpsLocation? Location { get; init; }
 
     // Writes the tags that are set over the camera's.
     internal void WriteTo(ExifTagValues tags)
@@ -88,6 +122,7 @@ public sealed record ExifData
             tags.Set(ExifTag.Software, software);
         if (UserComment is { } comment)
             tags.SetComment(comment);
+        Location?.WriteTo(tags);
     }
 }
 
@@ -97,13 +132,28 @@ internal sealed class ExifTagValues
     public Dictionary<ExifTag, (TiffType Type, uint Count, byte[] Value)> Values { get; } = [];
 
     /// <summary>
-    /// Sets a text tag. EXIF names the type ASCII, but the bytes are UTF-8, as rpicam-apps writes a user's text
-    /// (<c>image/jpeg.cpp</c>, <c>exif_set_string</c>): plain ASCII is unchanged, and other letters survive.
+    /// Sets a text tag. EXIF names the type ASCII, but the bytes are UTF-8: plain ASCII is unchanged, and other letters
+    /// survive.
     /// </summary>
     public void Set(ExifTag tag, string value)
     {
         var bytes = Encoding.UTF8.GetBytes(value + "\0");
         Values[tag] = (TiffType.Ascii, (uint)bytes.Length, bytes);
+    }
+
+    /// <summary>Sets a tag of bytes such as <see cref="ExifTag.GpsVersionId"/>.</summary>
+    public void Set(ExifTag tag, byte[] value) => Values[tag] = (TiffType.Byte, (uint)value.Length, value);
+
+    /// <summary>Sets a tag of several rationals, such as <see cref="ExifTag.GpsLatitude"/>'s degrees, minutes and seconds.</summary>
+    public void Set(ExifTag tag, ReadOnlySpan<(uint Numerator, uint Denominator)> values)
+    {
+        var bytes = new byte[values.Length * 8];
+        for (var i = 0; i < values.Length; i++)
+        {
+            BitConverter.GetBytes(values[i].Numerator).CopyTo(bytes, i * 8);
+            BitConverter.GetBytes(values[i].Denominator).CopyTo(bytes, i * 8 + 4);
+        }
+        Values[tag] = (TiffType.Rational, (uint)values.Length, bytes);
     }
 
     /// <summary>Sets a short (16-bit) tag such as <see cref="ExifTag.IsoSpeedRatings"/>.</summary>
@@ -118,23 +168,33 @@ internal sealed class ExifTagValues
         Values[tag] = (TiffType.Rational, 1, bytes);
     }
 
+    // UserComment's 8-byte character codes (EXIF 2.3 §4.6.5, Table 9).
+    private static ReadOnlySpan<byte> AsciiCode => "ASCII\0\0\0"u8;
+    private static ReadOnlySpan<byte> UnicodeCode => "UNICODE\0"u8;
+
     /// <summary>
     /// Sets <see cref="ExifTag.UserComment"/>: UNDEFINED bytes behind the 8-byte character code EXIF requires (EXIF 2.3
-    /// §4.6.5, the UserComment character codes; ImageSharp writes it the same way, as an encoded string). Plain ASCII
+    /// §4.6.5, the UserComment character codes). Plain ASCII
     /// gets the ASCII code; anything else the UNICODE code with UCS-2 in the file's byte order, which the EXIF shim sets
     /// to little-endian (<c>exif_shim.c</c>).
     /// </summary>
     public void SetComment(string value)
     {
         byte[] bytes = Ascii.IsValid(value)
-            ? [.. "ASCII\0\0\0"u8, .. Encoding.ASCII.GetBytes(value)]
-            : [.. "UNICODE\0"u8, .. Encoding.Unicode.GetBytes(value)];
+            ? [.. AsciiCode, .. Encoding.ASCII.GetBytes(value)]
+            : [.. UnicodeCode, .. Encoding.Unicode.GetBytes(value)];
         Values[ExifTag.UserComment] = (TiffType.Undefined, (uint)bytes.Length, bytes);
     }
 
-    /// <summary>Whether <paramref name="tag"/> belongs in the EXIF sub-directory rather than IFD0.</summary>
-    public static bool IsExifIfd(ExifTag tag) => tag is ExifTag.ExposureTime or ExifTag.IsoSpeedRatings or ExifTag.DateTimeOriginal
-        or ExifTag.DateTimeDigitized or ExifTag.SubjectDistance or ExifTag.UserComment;
+    /// <summary>The directory <paramref name="tag"/> belongs in.</summary>
+    public static ExifDirectory DirectoryOf(ExifTag tag) => tag switch
+    {
+        ExifTag.ExposureTime or ExifTag.IsoSpeedRatings or ExifTag.DateTimeOriginal or ExifTag.DateTimeDigitized
+            or ExifTag.SubjectDistance or ExifTag.UserComment => ExifDirectory.Exif,
+        ExifTag.GpsVersionId or ExifTag.GpsLatitudeRef or ExifTag.GpsLatitude or ExifTag.GpsLongitudeRef or ExifTag.GpsLongitude
+            or ExifTag.GpsAltitudeRef or ExifTag.GpsAltitude or ExifTag.GpsMapDatum => ExifDirectory.Gps,
+        _ => ExifDirectory.Ifd0,
+    };
 }
 
 /// <summary>
@@ -153,6 +213,24 @@ internal static class ExifSegment
     /// </summary>
     public static string? Maker => PlatformDetection.Current is Platform.Vc4 or Platform.Pisp ? "Raspberry Pi" : null;
 
+    // EXIF's date-time layout (EXIF 2.3 §4.6.4, DateTime), written the same whatever the machine's culture.
+    private const string DateTimeFormat = "yyyy:MM:dd HH:mm:ss";
+
+    // ISO speed per unit of gain: gain 1 is ISO 100.
+    private const int IsoPerUnitGain = 100;
+
+    // ExposureTime is a rational of seconds; libcamera gives microseconds.
+    private const uint MicrosecondsPerSecond = 1_000_000;
+
+    // SubjectDistance is a rational of metres, kept to millimetres.
+    private const uint MillimetresPerMetre = 1000;
+
+    /// <summary>An EXIF date-time, such as <c>2026:10:01 14:30:00</c>.</summary>
+    public static string DateTimeText(DateTime time) => time.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+
+    /// <summary>The ISO speed for a total gain (analogue × digital).</summary>
+    public static ushort Iso(float gain) => (ushort)(gain * IsoPerUnitGain);
+
     /// <summary>What <see cref="ExifTag.Software"/> says.</summary>
     public static string Software { get; } = "LibcameraSharp " + (typeof(ExifSegment).Assembly.GetName().Version?.ToString(3) ?? "");
 
@@ -160,7 +238,7 @@ internal static class ExifSegment
     /// Builds the segment payload (<c>Exif\0\0</c> + TIFF), or an empty array when the metadata has
     /// no gains and <paramref name="exifData"/> is null, or when libexif isn't installed.
     /// </summary>
-    public static byte[] Build(Metadata metadata, string cameraModel, ExifData? exifData = null, DateTime? now = null)
+    public static byte[] Build(Metadata metadata, string? cameraModel, ExifData? exifData = null, DateTime? now = null)
     {
         var hasGains = metadata.TryGet(Controls.AnalogueGain, out var analogueGain) & metadata.TryGet(Controls.DigitalGain, out var digitalGain);
         if (!hasGains && exifData is null)
@@ -172,17 +250,18 @@ internal static class ExifSegment
         var tags = new ExifTagValues();
         if (hasGains)
         {
-            var timestamp = (now ?? DateTime.Now).ToString("yyyy:MM:dd HH:mm:ss");
+            var timestamp = DateTimeText(now ?? DateTime.Now);
             if (Maker is { } maker)
                 tags.Set(ExifTag.Make, maker);
-            tags.Set(ExifTag.Model, cameraModel);
+            if (cameraModel is not null)
+                tags.Set(ExifTag.Model, cameraModel);
             tags.Set(ExifTag.Software, Software);
             tags.Set(ExifTag.DateTime, timestamp);
             tags.Set(ExifTag.DateTimeOriginal, timestamp);
             tags.Set(ExifTag.DateTimeDigitized, timestamp);
             if (metadata.TryGet(Controls.ExposureTime, out var exposure))
-                tags.Set(ExifTag.ExposureTime, (uint)exposure, 1_000_000);
-            tags.Set(ExifTag.IsoSpeedRatings, (ushort)(analogueGain * digitalGain * 100));
+                tags.Set(ExifTag.ExposureTime, (uint)exposure, MicrosecondsPerSecond);
+            tags.Set(ExifTag.IsoSpeedRatings, Iso(analogueGain * digitalGain));
             if (metadata.TryGet(Controls.LensPosition, out var lensPosition) && lensPosition > 0)
             {
                 var (numerator, denominator) = SubjectDistance(lensPosition);
@@ -195,7 +274,7 @@ internal static class ExifSegment
         try
         {
             foreach (var (tag, (type, count, value)) in tags.Values)
-                Libexif.Set(data, ExifTagValues.IsExifIfd(tag), (ushort)tag, type, count, value);
+                Libexif.Set(data, ExifTagValues.DirectoryOf(tag), (ushort)tag, type, count, value);
             return Libexif.Save(data);
         }
         finally
@@ -208,6 +287,6 @@ internal static class ExifSegment
     private static (uint, uint) SubjectDistance(float dioptres)
     {
         var metres = 1.0 / dioptres;
-        return ((uint)Math.Round(metres * 1000), 1000);
+        return ((uint)Math.Round(metres * MillimetresPerMetre), MillimetresPerMetre);
     }
 }

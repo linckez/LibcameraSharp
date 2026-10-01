@@ -46,7 +46,7 @@ public sealed unsafe class FrameBuffer
                     var offsetValid = NativeMethods.libcamera_framebuffer_plane_offset_valid(plane);
                     result[i] = new FrameBufferPlane(
                         NativeMethods.libcamera_framebuffer_plane_fd(plane),
-                        offsetValid ? (long)NativeMethods.libcamera_framebuffer_plane_offset(plane) : -1,
+                        offsetValid ? (long)NativeMethods.libcamera_framebuffer_plane_offset(plane) : null,
                         (long)NativeMethods.libcamera_framebuffer_plane_length(plane));
                 }
                 return result;
@@ -76,9 +76,9 @@ public sealed unsafe class FrameBuffer
 
 /// <summary>One plane of a <see cref="FrameBuffer"/>: a DMA-BUF fd with an offset and length.</summary>
 /// <param name="Fd">File descriptor of the DMA-BUF. Owned by libcamera; don't close it.</param>
-/// <param name="Offset">Byte offset of the plane within the fd, or -1 when unknown.</param>
+/// <param name="Offset">Byte offset of the plane within the fd, or null when libcamera reports it as not valid.</param>
 /// <param name="Length">Plane size in bytes.</param>
-public readonly record struct FrameBufferPlane(int Fd, long Offset, long Length);
+public readonly record struct FrameBufferPlane(int Fd, long? Offset, long Length);
 
 /// <summary>Result of the capture into a buffer.</summary>
 public enum FrameStatus
@@ -107,7 +107,7 @@ public sealed unsafe class FrameMetadata
     public uint Sequence => NativeMethods.libcamera_frame_metadata_sequence(_metadata);
 
     /// <summary>Capture time on the monotonic clock (<c>CLOCK_MONOTONIC</c>), so only differences between frames are meaningful.</summary>
-    public TimeSpan Timestamp => TimeSpan.FromTicks((long)(NativeMethods.libcamera_frame_metadata_timestamp(_metadata) / 100));
+    public TimeSpan Timestamp => TimeSpan.FromTicks((long)(NativeMethods.libcamera_frame_metadata_timestamp(_metadata) / TimeSpan.NanosecondsPerTick));
 
     /// <summary>Bytes actually written to each plane.</summary>
     public IReadOnlyList<uint> BytesUsed

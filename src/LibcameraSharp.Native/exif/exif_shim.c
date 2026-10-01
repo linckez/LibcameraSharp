@@ -10,6 +10,7 @@
 
 _Static_assert((int)EXIF_BLOCK_IFD_0 == (int)EXIF_IFD_0, "exif_block_ifd must match libexif's ExifIfd");
 _Static_assert((int)EXIF_BLOCK_IFD_EXIF == (int)EXIF_IFD_EXIF, "exif_block_ifd must match libexif's ExifIfd");
+_Static_assert((int)EXIF_BLOCK_IFD_GPS == (int)EXIF_IFD_GPS, "exif_block_ifd must match libexif's ExifIfd");
 
 ExifData *exif_block_new(void)
 {

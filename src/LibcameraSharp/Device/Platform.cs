@@ -27,8 +27,17 @@ internal enum Platform
 /// </remarks>
 internal static partial class PlatformDetection
 {
+    // The C runtime, for open/ioctl/close on the video devices.
+    private const string CRuntime = "libc";
+
     private const int MaxVideoDevices = 64;
     private const int ORdwr = 2;
+
+    // The card names the Raspberry Pi ISPs, and the pre-libcamera firmware camera, report.
+    private const string Vc4Card = "bcm2835-isp", PispCard = "pispbe", LegacyCard = "bm2835 mmal";
+
+    // v4l2_capability's fixed-size text fields (videodev2.h).
+    private const int DriverLength = 16, CardLength = 32, BusInfoLength = 32;
 
     // _IOR('V', 0, struct v4l2_capability): read direction, 104-byte payload.
     private const uint VidiocQuerycap = 0x80685600;
@@ -71,9 +80,9 @@ internal static partial class PlatformDetection
 
             switch (card)
             {
-                case "bcm2835-isp": return Platform.Vc4;
-                case "pispbe": return Platform.Pisp;
-                case "bm2835 mmal": return Platform.Legacy;
+                case Vc4Card: return Platform.Vc4;
+                case PispCard: return Platform.Pisp;
+                case LegacyCard: return Platform.Legacy;
                 default: unknown = true; break;
             }
         }
@@ -89,24 +98,24 @@ internal static partial class PlatformDetection
     [StructLayout(LayoutKind.Sequential)]
     private unsafe struct V4l2Capability
     {
-        private fixed byte _driver[16];
-        private fixed byte _card[32];
-        private fixed byte _busInfo[32];
+        private fixed byte _driver[DriverLength];
+        private fixed byte _card[CardLength];
+        private fixed byte _busInfo[BusInfoLength];
         private readonly uint _version;
         private readonly uint _capabilities;
         private readonly uint _deviceCaps;
         private fixed uint _reserved[3];
 
-        public ReadOnlySpan<byte> Driver { get { fixed (byte* p = _driver) return new(p, 16); } }
-        public ReadOnlySpan<byte> Card { get { fixed (byte* p = _card) return new(p, 32); } }
+        public ReadOnlySpan<byte> Driver { get { fixed (byte* p = _driver) return new(p, DriverLength); } }
+        public ReadOnlySpan<byte> Card { get { fixed (byte* p = _card) return new(p, CardLength); } }
     }
 
-    [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    [LibraryImport(CRuntime, EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
     private static partial int Open(string path, int flags);
 
-    [LibraryImport("libc", EntryPoint = "ioctl", SetLastError = true)]
+    [LibraryImport(CRuntime, EntryPoint = "ioctl", SetLastError = true)]
     private static unsafe partial int Ioctl(int fd, uint request, V4l2Capability* argument);
 
-    [LibraryImport("libc", EntryPoint = "close")]
+    [LibraryImport(CRuntime, EntryPoint = "close")]
     private static partial int Close(int fd);
 }

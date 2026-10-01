@@ -30,8 +30,8 @@ public class RecorderTests : IDisposable
             while (recording.FrameCount == 0)
                 await Task.Delay(20, timeout.Token);
 
-            await recording.StopAsync();
-            await recording.StopAsync();             // stopping twice must be harmless
+            await recording.StopAsync(ct);
+            await recording.StopAsync(ct);           // stopping twice must be harmless
         }
 
         var written = await File.ReadAllBytesAsync(path, ct);
@@ -68,7 +68,7 @@ public class RecorderTests : IDisposable
         var recording = await camera.StartRecordingAsync(new FullDisk(), new VideoOptions { Codec = VideoCodec.Mjpeg }, cancellationToken: ct);
         await recording.WhenFailed.WaitAsync(TimeSpan.FromSeconds(10), ct);
 
-        await Assert.ThrowsAsync<IOException>(recording.StopAsync);
+        await Assert.ThrowsAsync<IOException>(() => recording.StopAsync(ct));
         await recording.DisposeAsync();
     }
 
