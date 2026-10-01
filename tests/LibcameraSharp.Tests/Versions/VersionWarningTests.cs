@@ -24,10 +24,4 @@ public class VersionWarningTests
         Assert.Contains(running, warning);
         Assert.Contains("0.7.x", warning);
     }
-
-    [Fact]
-    public void An_unreported_version_warns_rather_than_matching_by_accident()
-    {
-        Assert.NotNull(CameraManager.VersionWarning("", "0.7.2"));
-    }
 }

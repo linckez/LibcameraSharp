@@ -13,5 +13,5 @@ python3 gen_pinvoke.py --api-dir ../../LibcameraSharp.Native/tiff --out-dir ../.
     --library libtiff-shim --namespace LibcameraSharp.Photos.Interop.Tiff --cflags "$(pkg-config --cflags libtiff-4)"
 python3 gen_pinvoke.py --api-dir ../../LibcameraSharp.Native/exif --out-dir ../../LibcameraSharp/Photos/Interop/Exif \
     --library libexif-shim --namespace LibcameraSharp.Photos.Interop.Exif --cflags "$(pkg-config --cflags libexif)"
-python3 gen_controls.py     # inputs/*.yaml                      -> ../Generated/*.g.cs
-python3 gen_bayer.py        # inputs/*/bayer_format.cpp          -> ../Generated/BayerFormats.g.cs
+python3 gen_controls.py     # inputs/*.yaml                      -> ../{Controls,Formats,Logging}/*.g.cs
+python3 gen_bayer.py        # inputs/*/bayer_format.cpp          -> ../Formats/BayerFormats.g.cs

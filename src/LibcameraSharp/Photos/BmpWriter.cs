@@ -6,31 +6,39 @@ namespace LibcameraSharp;
 /// <remarks>Rows are written top-down and padded to 4 bytes; any of the four RGB formats is reordered to B,G,R.</remarks>
 internal static class BmpWriter
 {
+    // A 14-byte file header, then the 40-byte BITMAPINFOHEADER; one plane of 24-bit pixels; rows padded to 4 bytes.
+    private const int FileHeaderSize = 14, InfoHeaderSize = 40, HeaderSize = FileHeaderSize + InfoHeaderSize;
+    private const ushort Planes = 1, BitsPerPixel = 24;
+    private const int RowAlignment = 4, BytesPerPixelOut = BitsPerPixel / 8;
+
+    // The resolution written, in pixels per metre (about 2540 dpi); BMP readers ignore it for display.
+    private const uint PixelsPerMetre = 100_000;
+
     /// <summary>Encodes <paramref name="pixels"/> (an RGB format) to <paramref name="output"/>.</summary>
     /// <exception cref="NotSupportedException">The frame's format isn't one of the four RGB formats.</exception>
     public static void Save(FramePixels pixels, Stream output)
     {
         var (width, height) = ((int)pixels.Size.Width, (int)pixels.Size.Height);
-        var line = width * 3;
-        var pitch = (line + 3) & ~3;
+        var line = width * BytesPerPixelOut;
+        var pitch = (line + RowAlignment - 1) & ~(RowAlignment - 1);
         var pad = pitch - line;
         var swap = pixels.Format == PixelFormats.BGR888 || pixels.Format == PixelFormats.XBGR8888;      // R,G,B in memory → B,G,R on disk
-        var bytesPerPixel = PixelLayout.BytesPerPixel(pixels.Format) ?? 0;
-        if (bytesPerPixel is not (3 or 4))
+        if (PixelLayout.BytesPerPixel(pixels.Format) is not ((3 or 4) and var bytesPerPixel))
             throw new NotSupportedException($"Stream format {pixels.Format} not supported for BMP; use an RGB format.");
 
-        Span<byte> header = stackalloc byte[54];
+        // The file header (type, file size, pixel offset), then the info header; a negative height means rows top-down.
+        Span<byte> header = stackalloc byte[HeaderSize];
         header[0] = (byte)'B';
         header[1] = (byte)'M';
-        BinaryPrimitives.WriteUInt32LittleEndian(header[2..], (uint)(54 + height * pitch));
-        BinaryPrimitives.WriteUInt32LittleEndian(header[10..], 54);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[14..], 40);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[2..], (uint)(HeaderSize + height * pitch));
+        BinaryPrimitives.WriteUInt32LittleEndian(header[10..], HeaderSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[FileHeaderSize..], InfoHeaderSize);
         BinaryPrimitives.WriteInt32LittleEndian(header[18..], width);
         BinaryPrimitives.WriteInt32LittleEndian(header[22..], -height);
-        BinaryPrimitives.WriteUInt16LittleEndian(header[26..], 1);
-        BinaryPrimitives.WriteUInt16LittleEndian(header[28..], 24);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[38..], 100000);
-        BinaryPrimitives.WriteUInt32LittleEndian(header[42..], 100000);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[26..], Planes);
+        BinaryPrimitives.WriteUInt16LittleEndian(header[28..], BitsPerPixel);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[38..], PixelsPerMetre);
+        BinaryPrimitives.WriteUInt32LittleEndian(header[42..], PixelsPerMetre);
         output.Write(header);
 
         var row = new byte[pitch];

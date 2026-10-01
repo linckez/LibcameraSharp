@@ -4,7 +4,7 @@ using System.Text;
 namespace LibcameraSharp.Tests.Imaging;
 
 /// <summary>
-/// Just enough TIFF parsing to compare what two writers produced: every IFD (0th, EXIF, SubIFDs)
+/// Just enough TIFF parsing to compare what two writers produced: every IFD (0th, EXIF, GPS, SubIFDs)
 /// as tag → decoded value, either byte order, with an optional <c>Exif\0\0</c> prefix.
 /// </summary>
 internal sealed class TiffReader
@@ -22,12 +22,15 @@ internal sealed class TiffReader
         Ifd0 = ReadIfd(U32(4));
         if (Ifd0.TryGetValue(34665, out var exif))
             Exif = ReadIfd((uint)((uint[])exif)[0]);
+        if (Ifd0.TryGetValue(34853, out var gps))
+            Gps = ReadIfd((uint)((uint[])gps)[0]);
         if (Ifd0.TryGetValue(330, out var subs))
             SubIfds = ((uint[])subs).Select(o => ReadIfd(o)).ToList();
     }
 
     public Dictionary<ushort, object> Ifd0 { get; }
     public Dictionary<ushort, object>? Exif { get; }
+    public Dictionary<ushort, object>? Gps { get; }
     public List<Dictionary<ushort, object>> SubIfds { get; } = [];
 
     private Dictionary<ushort, object> ReadIfd(uint offset)

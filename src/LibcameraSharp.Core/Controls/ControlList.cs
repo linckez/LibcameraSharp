@@ -2,7 +2,7 @@ using System.Collections;
 using LibcameraSharp.Native;
 using LibcameraSharp.Native.Interop;
 
-namespace LibcameraSharp;
+namespace LibcameraSharp.Core;
 
 /// <summary>
 /// The controls attached to a request (<see cref="Request.Controls"/>), or the metadata
@@ -122,10 +122,10 @@ public unsafe class ControlList : IEnumerable<KeyValuePair<uint, ControlType>>, 
             NativeMethods.libcamera_control_list_set(Pointer, (libcamera_property_id)id, value);
     }
 
-    /// <summary>The generated key for an id in this list, or one described from its stored value.</summary>
+    /// <summary>The generated key for an id in this list (a property's, in a property list), or one described from its stored value.</summary>
     internal ControlKey KeyFor(uint id)
     {
-        if (ControlKeys.ByControlId(id) is { } key)
+        if (LookupKey(id) is { } key)
             return key;
 
         var value = NativeMethods.libcamera_control_list_get(Pointer, (libcamera_property_id)id);
@@ -197,22 +197,4 @@ public unsafe class ControlList : IEnumerable<KeyValuePair<uint, ControlType>>, 
         }
         return items;
     }
-}
-
-/// <summary>
-/// A camera's static properties (<see cref="Camera.Properties"/>), read with the keys in
-/// <see cref="Properties"/>: <c>camera.Properties.Get(Properties.Model)</c>.
-/// </summary>
-public sealed unsafe class PropertyList : ControlList
-{
-    internal PropertyList(libcamera_control_list* list) : base(list) { }
-
-    /// <summary>Gets the value for <paramref name="key"/>.</summary>
-    /// <exception cref="KeyNotFoundException">The camera doesn't report this property.</exception>
-    public T Get<T>(Property<T> key) => GetCore<T>(key);
-
-    /// <summary>Gets the value for <paramref name="key"/> if the camera reports it.</summary>
-    public bool TryGet<T>(Property<T> key, out T value) => TryGetCore(key, out value);
-
-    private protected override ControlKey? LookupKey(uint id) => ControlKeys.ByPropertyId(id);
 }

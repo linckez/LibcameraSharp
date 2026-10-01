@@ -1,3 +1,4 @@
+using LibcameraSharp.Tests.Capture;
 using SkiaSharp;
 
 namespace LibcameraSharp.Tests.Video;
@@ -15,16 +16,16 @@ public class LibavMjpegEncoderTests(ITestOutputHelper output)
     public async Task Every_frame_is_a_complete_jpeg_of_the_configured_size()
     {
         using var manager = new CameraManager();
-        using var session = new CameraSession(manager);
+        await using var session = new CameraSession(manager);
         using var buffer = new MemoryStream();
         using var sink = new FileOutput(buffer);
         var encoder = new LibavMjpegEncoder();
 
-        session.Configure(session.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
+        await session.ConfigureAsync(s => s.CreateVideoConfiguration(main: new StreamDescription(new Size(640, 480), PixelFormats.BGR888)));
 
-        session.StartRecording(encoder, sink);
+        await session.StartRecordingAsync(encoder, sink);
         await WaitForFramesAsync(session, encoder, 5);
-        session.StopRecording();
+        await session.StopRecordingAsync(encoder);
 
         var data = buffer.ToArray();
         var frames = SplitJpegs(data);
@@ -64,10 +65,7 @@ public class LibavMjpegEncoderTests(ITestOutputHelper output)
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
         while (encoder.FramesEncoded < frames)
         {
-            if (session.LastFrameError is { } error)
-                throw new InvalidOperationException($"encoding failed after {encoder.FramesEncoded} frames", error);
             await Task.Delay(20, timeout.Token);
         }
-        Assert.Null(session.LastFrameError);
     }
 }

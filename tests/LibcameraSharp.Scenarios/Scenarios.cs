@@ -10,7 +10,7 @@ static class Champions
     static readonly PhotoOptions Night = new()
     {
         Streams = new StreamSettings { CaptureSize = new Size(4056, 3040) },
-        Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(80), Gain = 8.0f, FrameRate = (5, 30) },
+        Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(80)), Gain = GainMode.Fixed(8.0f), FrameRate = (5, 30) },
         Encoding = PhotoEncoding.Jpeg,
         JpegQuality = 95,
         Exif = new ExifData { Artist = "A. Rossi", Copyright = "CC-BY" },
@@ -18,7 +18,7 @@ static class Champions
 
     public static async Task One(CancellationToken ct)
     {
-        using CameraDevice camera = CameraDevice.Open();
+        await using CameraDevice camera = CameraDevice.Open();
 
         Photo photo = await camera.CapturePhotoAsync(cancellationToken: ct);
         await photo.SaveAsync(path: "photo.jpg", cancellationToken: ct);
@@ -49,15 +49,14 @@ static class Champions
             Streams = new StreamSettings { CaptureSize = new Size(1920, 1080) },
             Controls = new CameraControls { FrameRate = 30 },
             Codec = VideoCodec.H264,
-            Quality = Quality.High,
+            Quality = VideoQuality.High,
             KeyframeInterval = 60,                                   // frames
         };
 
-        await using (VideoRecording recording = camera.RecordTo("clip.mp4", clip))
-        {
-            await Task.Delay(TimeSpan.FromSeconds(10), ct);
-            Console.WriteLine($"{recording.FrameCount} frames");
-        }
+        VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", clip, ct);
+        await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        await recording.StopAsync();                                  // reports a full disk as an IOException
+        Console.WriteLine($"{recording.FrameCount} frames");
     }
 
     public static async Task Four(CameraDevice camera, CancellationToken ct)
@@ -81,8 +80,8 @@ static class Champions
     {
         CameraControls manual = new()
         {
-            Exposure = TimeSpan.FromMilliseconds(8),
-            Gain = 2.0f,
+            Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)),
+            Gain = GainMode.Fixed(2.0f),
             WhiteBalance = WhiteBalance.Manual(redGain: 1.8f, blueGain: 1.4f),
             Focus = FocusMode.AtMetres(0.5),
             Zoom = new RegionOfInterest(0.25, 0.25, 0.5, 0.5),
@@ -91,7 +90,7 @@ static class Champions
         Photo photo = await camera.CapturePhotoAsync(new PhotoOptions { Controls = manual }, ct);
         Console.WriteLine($"asked 8 ms; got {photo.Metadata.ExposureTime?.TotalMilliseconds} ms at gain {photo.Metadata.AnalogueGain}");
 
-        camera.SetControls(new CameraControls { Exposure = TimeSpan.FromMilliseconds(12) });
+        camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(12)) });
 
         (double Min, double Max, double? Default)? gain = camera.Capabilities.Range(Controls.AnalogueGain);
         Console.WriteLine($"this sensor goes to {gain?.Max}x");
@@ -109,7 +108,7 @@ static class Champions
         await shot.SaveAsync(path: "shot.jpg", cancellationToken: ct);
 
         RawImage raw = shot.Raw ?? throw new InvalidOperationException("this camera has no raw stream");
-        await raw.SaveAsync(path: "shot.dng", cancellationToken: ct);
+        raw.Save("shot.dng");
         ReadOnlyMemory<byte> bayer = raw.Bytes;
         Console.WriteLine(bayer.Length);
     }
@@ -120,7 +119,7 @@ static class Champions
         foreach (CameraInfo found in cameras)
             Console.WriteLine($"{found.Model}  {found.Id}");
 
-        using CameraDevice camera = CameraDevice.Open(cameras[1].Id);
+        await using CameraDevice camera = CameraDevice.Open(cameras[1].Id);
 
         IReadOnlyList<SensorMode> modes = await camera.ProbeSensorModesAsync(ct);
         SensorMode fast = modes.MaxBy(mode => mode.MaxFrameRate)!;
@@ -130,8 +129,9 @@ static class Champions
             Streams = new StreamSettings { CaptureSize = new Size(1920, 1080), SensorMode = fast },
         };
 
-        await using VideoRecording recording = camera.RecordTo("clip.mp4", options);
+        VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", options, ct);
         await Task.Delay(TimeSpan.FromSeconds(10), ct);
+        await recording.StopAsync();
     }
 
     static Task DetectAsync(ReadOnlyMemory<byte> luma, Size size, int stride, CancellationToken ct) => Task.CompletedTask;

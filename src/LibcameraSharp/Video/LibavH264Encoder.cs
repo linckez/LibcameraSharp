@@ -9,31 +9,40 @@ namespace LibcameraSharp;
 /// <remarks>Software H.264 at 1080p30 takes about a core and a half on a Pi 5.</remarks>
 internal sealed unsafe class LibavH264Encoder : LibavEncoder
 {
-    /// <summary>Bits per second. Left null, it is derived from the <see cref="Quality"/> and the frame size.</summary>
+    /// <summary>Bits per second. Left null, it is derived from the <see cref="VideoQuality"/> and the frame size.</summary>
     public long? Bitrate { get; set; }
 
     /// <summary>Frames between keyframes.</summary>
-    public int KeyframeInterval { get; set; } = 30;
+    public int KeyframeInterval { get; set; } = VideoOptions.DefaultKeyframeInterval;
 
     // FFmpeg's names for the Pi 4's hardware H.264 encoder and for x264, and x264's fastest preset.
     private const string HardwareEncoder = "h264_v4l2m2m";
     private const string SoftwareEncoder = "libx264";
     private const string SoftwarePreset = "ultrafast";
 
+    // x264's tuning that turns off frame look-ahead, so each frame leaves the encoder as it is encoded.
+    private const string SoftwareTune = "zerolatency";
+
+    // The quality table's Mbps is for this many pixels a second: 1080p at 30 fps.
+    private const double ReferencePixelsPerSecond = 1920.0 * 1080 * 30;
+
+    // H.264 level 4.1's macroblock rate (Table A-1); above it the stream is marked level 4.2, as level_idc 42.
+    private const int Level41MacroblocksPerSecond = 245_760;
+    private const int Level42 = 42;
+
     /// <inheritdoc/>
     protected override VideoCodec Codec => VideoCodec.H264;
 
     /// <inheritdoc/>
-    protected override void Setup(Quality quality)
+    protected override void Setup(VideoQuality quality)
     {
         if (Bitrate is not null)
             return;
 
         // Mbps at 1080p30, scaled by the square root of how many more or fewer pixels per second this is.
-        var table = new Dictionary<Quality, int> { [Quality.VeryLow] = 3, [Quality.Low] = 4, [Quality.Medium] = 7, [Quality.High] = 10, [Quality.VeryHigh] = 14 };
-        var referenceComplexity = 1920.0 * 1080 * 30;
-        var actualComplexity = (double)Width * Height * (FrameRate ?? 30);
-        Bitrate = (long)(table[quality] * 1_000_000 * Math.Sqrt(actualComplexity / referenceComplexity));
+        var table = new Dictionary<VideoQuality, int> { [VideoQuality.VeryLow] = 3, [VideoQuality.Low] = 4, [VideoQuality.Medium] = 7, [VideoQuality.High] = 10, [VideoQuality.VeryHigh] = 14 };
+        var pixelsPerSecond = (double)Width * Height * FrameRate;
+        Bitrate = (long)(table[quality] * 1_000_000 * Math.Sqrt(pixelsPerSecond / ReferencePixelsPerSecond));
     }
 
     /// <inheritdoc/>
@@ -51,12 +60,12 @@ internal sealed unsafe class LibavH264Encoder : LibavEncoder
     /// <inheritdoc/>
     protected override void Configure(AVCodecContext* context, bool hardware)
     {
-        context->bit_rate = Bitrate ?? 0;
+        context->bit_rate = Bitrate!.Value;                                   // Setup always sets it
         context->gop_size = KeyframeInterval;
         // Above 1080p30's macroblock rate, H.264 needs level 4.2; the Pi 4 encoder refuses to start without it.
-        var macroblocksPerSecond = ((Width + 15) >> 4) * ((Height + 15) >> 4) * (FrameRate ?? 30);
-        if (macroblocksPerSecond > 245760)
-            context->level = 42;
+        var macroblocksPerSecond = ((Width + 15) >> 4) * ((Height + 15) >> 4) * FrameRate;   // 16×16 pixels each
+        if (macroblocksPerSecond > Level41MacroblocksPerSecond)
+            context->level = Level42;
         if (hardware)
             context->max_b_frames = 0;
     }
@@ -67,6 +76,6 @@ internal sealed unsafe class LibavH264Encoder : LibavEncoder
         if (hardware)
             return;
         ffmpeg.av_dict_set(options, "preset", SoftwarePreset, 0);
-        ffmpeg.av_dict_set(options, "tune", "zerolatency", 0);
+        ffmpeg.av_dict_set(options, "tune", SoftwareTune, 0);
     }
 }

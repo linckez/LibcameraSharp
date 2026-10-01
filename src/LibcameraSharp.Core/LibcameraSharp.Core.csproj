@@ -4,7 +4,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <RuntimeIdentifiers>linux-arm64;linux-x64</RuntimeIdentifiers>
-    <Version>10.0.0</Version>
+    <Version>10.1.0</Version>
     <RootNamespace>LibcameraSharp</RootNamespace>
   </PropertyGroup>
 
@@ -14,6 +14,11 @@
     <Description>libcamera for .NET: cameras, configurations, requests, frame buffers and typed controls generated from libcamera's own definitions. For building your own capture pipeline; LibcameraSharp builds photos and video on top. Native AOT ready.</Description>
     <PackageTags>libcamera;camera;raspberry-pi;raspberrypi;capture;v4l2;native-aot;interop</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- libcamera's own classes, kept out of the namespace users see; the code here uses them throughout. -->
+    <Using Include="LibcameraSharp.Core" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="LibcameraSharp" />

@@ -10,9 +10,13 @@ dotnet add package LibcameraSharp.Core
 and video, or their SkiaSharp and FFmpeg dependencies. It reads like libcamera's C++ API, because it
 is that API: cameras, configurations, frame buffers, requests and every control, typed.
 
+libcamera's classes (the manager, cameras, configurations, requests, buffers, control lists) are in
+`LibcameraSharp.Core`. What they share with `LibcameraSharp` (sizes, pixel formats, control keys and
+their enums, logging, exceptions) is in `LibcameraSharp`, so the two `using`s below cover everything.
+
 ```csharp
 using LibcameraSharp;
-using LibcameraSharp.Advanced;
+using LibcameraSharp.Core;
 
 using var manager = new CameraManager();                          // one per process
 using var camera = manager.Cameras[0].Acquire();                  // exclusive access
@@ -58,11 +62,15 @@ camera.Stop();
 
 ## From a CameraDevice
 
-`camera.Advanced` on a `CameraDevice` is its `ActiveCamera`: its properties, the controls it
-advertises with their ranges, and its configuration.
+`camera.Advanced` on a `CameraDevice` is a read-only description of the camera it drives: every property
+libcamera reports, the limits of every control it advertises (as libcamera stores them, such as a
+rectangle for `ScalerCrop`), and the configuration in effect. It's taken again after every reconfigure,
+so read it again rather than keeping one. To start, stop, configure or queue requests yourself, open the
+camera with this package's `CameraManager` instead of a `CameraDevice`.
 
 ```csharp
-string model = device.Advanced.Properties.Get(Properties.Model);
+if (device.Advanced.TryGetProperty(Properties.Model, out string model))
+    Console.WriteLine(model);
 ```
 
 ## Rules libcamera enforces
@@ -93,9 +101,9 @@ foreach (var supported in camera.Controls)
 ## Logging
 
 ```csharp
-LibcameraLog.SetTarget(LogTarget.None);        // before the manager: silences the startup banner
+LibcameraLog.SetTarget(LibcameraLogTarget.None);    // before the manager: silences the startup banner
 using var manager = new CameraManager();
-LibcameraLog.SetLevel(LogLevel.Error);         // after: errors only from here on
+LibcameraLog.SetLevel(LibcameraLogLevel.Error);     // after: errors only from here on
 ```
 
 ## Events

@@ -19,6 +19,7 @@ struct _ExifData;
 enum exif_block_ifd {
 	EXIF_BLOCK_IFD_0 = 0,
 	EXIF_BLOCK_IFD_EXIF = 2,
+	EXIF_BLOCK_IFD_GPS = 3,
 };
 
 /** A new, empty EXIF block in little-endian ("Intel") byte order, or NULL. Release with exif_block_free. */

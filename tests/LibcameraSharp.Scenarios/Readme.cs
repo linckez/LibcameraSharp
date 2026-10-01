@@ -7,7 +7,7 @@ static class ReadmeSamples
 {
     public static async Task QuickStart()
     {
-        using CameraDevice camera = CameraDevice.Open();
+        await using CameraDevice camera = CameraDevice.Open();
 
         Photo photo = await camera.CapturePhotoAsync();
         await photo.SaveAsync("photo.jpg");
@@ -15,8 +15,9 @@ static class ReadmeSamples
 
     public static async Task ALittleMore(CameraDevice camera, WebApplication app)
     {
-        await using (camera.RecordTo("clip.mp4"))
-            await Task.Delay(TimeSpan.FromSeconds(10));
+        VideoRecording recording = await camera.StartRecordingAsync("clip.mp4");
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        await recording.StopAsync();
 
         app.MapGet("/live.mp4", (CameraDevice camera, CancellationToken ct) =>
             Results.Stream(body => camera.RecordToAsync(body, new VideoOptions(), VideoContainer.Mp4, ct), "video/mp4"));
@@ -27,7 +28,7 @@ static class ReadmeSamples
 
         var manual = new PhotoOptions
         {
-            Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(8), Gain = 2.0f },
+            Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)), Gain = GainMode.Fixed(2.0f) },
         };
         Photo sharp = await camera.CapturePhotoAsync(manual);
     }

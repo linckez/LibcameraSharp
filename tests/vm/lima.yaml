@@ -2,7 +2,10 @@
 # libraries here (glibc, FFmpeg) are the ones a Pi runs. libcamera's `virtual` camera allocates its
 # buffers from udmabuf, which Docker Desktop's kernel lacks, so this needs a real Linux kernel.
 #
-#   limactl create --name libcamera tests/vm/lima.yaml
+# From the repository's root, which the VM mounts at /work:
+#
+#   limactl create --name libcamera \
+#     --set ".mounts = [{\"location\": \"$PWD\", \"mountPoint\": \"/work\", \"writable\": true}]" tests/vm/lima.yaml
 #   limactl shell libcamera -- /work/tests/vm/setup-libcamera.sh
 #
 # Debian's "generic" image, not "genericcloud": the cloud kernel is built without media or udmabuf.
@@ -15,11 +18,6 @@ vmType: vz
 cpus: 4
 memory: 6GiB
 disk: 40GiB
-
-mounts:
-  - location: "~/trash-code/LibcameraSharp"
-    mountPoint: /work
-    writable: true
 
 provision:
   - mode: system

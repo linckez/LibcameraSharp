@@ -135,13 +135,17 @@ internal sealed unsafe class MappingHandle : LibcameraHandle
     private MappingHandle(nint address, nuint length) : base(address) => _length = length;
 
     /// <summary>Maps <paramref name="length"/> bytes of <paramref name="fd"/> from <paramref name="offset"/>, shared, read-only unless <paramref name="writable"/>.</summary>
-    /// <exception cref="LibcameraException">mmap failed; <see cref="LibcameraException.Errno"/> says why.</exception>
+    /// <exception cref="IOException">mmap failed; the message says why.</exception>
     public static MappingHandle Map(int fd, long offset, nuint length, bool writable)
     {
         var prot = Libc.PROT_READ | (writable ? Libc.PROT_WRITE : 0);
         var address = Libc.mmap(null, length, prot, Libc.MAP_SHARED, fd, offset);
         if (address == Libc.MAP_FAILED)
-            throw new LibcameraException($"mmap {length} bytes of fd {fd}", Marshal.GetLastPInvokeError());
+        {
+            // An OS failure, not libcamera's: reported as .NET's own memory-mapped files report a failed mmap.
+            var errno = Marshal.GetLastPInvokeError();
+            throw new IOException($"mmap of {length} bytes of fd {fd} failed: {Marshal.GetPInvokeErrorMessage(errno)} (errno {errno})");
+        }
         return new MappingHandle((nint)address, length);
     }
 

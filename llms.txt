@@ -2,21 +2,22 @@
 
 > A .NET 10 SDK for cameras driven by libcamera, mostly Raspberry Pi camera modules: photos (JPEG, PNG, DNG with EXIF), H.264 and MJPEG video (MP4, Matroska, MPEG-TS), live frames, and typed camera controls. NuGet package `LibcameraSharp`; `LibcameraSharp.Core` is libcamera itself for .NET. Linux arm64, libcamera 0.7.
 
-Everything is in the `LibcameraSharp` namespace. The pattern: open a `CameraDevice`, declare an options record (`PhotoOptions`, `VideoOptions`, `FrameOptions`), and pass it to the call. There is no separate configure step; passing the same options again doesn't set the camera up again. Each options record has `Streams` (sizes, formats, raw; changing them reconfigures the camera) and `Controls` (exposure, gain, focus; the call waits until they take effect).
+Everything here is in the `LibcameraSharp` namespace; only libcamera's own classes (`CameraManager`, `Request`, `FrameBuffer`, ...) are in `LibcameraSharp.Core`. The pattern: open a `CameraDevice`, declare an options record (`PhotoOptions`, `VideoOptions`, `FrameOptions`), and pass it to the call. There is no separate configure step; passing the same options again doesn't set the camera up again. Each options record has `Streams` (sizes, formats, raw; changing them reconfigures the camera) and `Controls` (exposure, gain, focus; the call waits until they take effect).
 
 ```csharp
 using LibcameraSharp;
 
-using CameraDevice camera = CameraDevice.Open();
+await using CameraDevice camera = CameraDevice.Open();
 
 Photo photo = await camera.CapturePhotoAsync(new PhotoOptions
 {
-    Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(8), Gain = 2.0f },
+    Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(8)), Gain = GainMode.Fixed(2.0f) },
 });
 await photo.SaveAsync("photo.jpg");
 
-await using (VideoRecording recording = camera.RecordTo("clip.mp4"))
-    await Task.Delay(TimeSpan.FromSeconds(10));
+VideoRecording recording = await camera.StartRecordingAsync("clip.mp4");
+await Task.Delay(TimeSpan.FromSeconds(10));
+await recording.StopAsync();
 
 await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions(), ct))
     using (frame)                                        // frames are the camera's buffers: always dispose
@@ -25,12 +26,15 @@ await foreach (VideoFrame frame in camera.ReadFramesAsync(new FrameOptions(), ct
 
 Things an assistant gets wrong without being told:
 
-- `camera.RecordTo(...)` returns a `VideoRecording`; disposing it finalises the file.
-- `Exposure = TimeSpan.Zero` and `Gain = 0` mean "back to automatic"; `null` means "don't send".
+- `camera.StartRecordingAsync(...)` returns a `VideoRecording`; `StopAsync()` finalises the file and throws `IOException` if writing failed. Disposing stops it too but never throws.
+- `CameraDevice` and `VideoRecording` are `IAsyncDisposable` only: `await using`, never `using`.
+- `Exposure = ExposureMode.Auto` and `Gain = GainMode.Auto` mean "back to automatic"; `null` means "don't send". Flicker is `FlickerMode.Off` or `FlickerMode.Manual(period)`.
 - Rows can be padded: use `frame.Stride(i)`, not the width.
+- `frame.ToJpeg(quality = 50)` encodes a frame as a JPEG (no EXIF) for a live view; call it before disposing the frame.
 - `BGR888` is stored R, G, B in memory (libcamera names read backwards).
 - One process holds a camera at a time; a second gets `CameraBusyException`.
 - On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that.
+- Without a camera (tests, a laptop): derive from `CameraDevice` (protected constructor, virtual members) and build return values with `LibcameraSharpModelFactory`.
 
 ## Docs
 

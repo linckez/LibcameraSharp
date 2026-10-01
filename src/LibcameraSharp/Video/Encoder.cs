@@ -1,4 +1,3 @@
-
 using System.Threading.Channels;
 
 namespace LibcameraSharp;
@@ -7,10 +6,15 @@ namespace LibcameraSharp;
 /// Turns camera frames into an encoded stream and pushes it to its <see cref="Output"/>. It is fed
 /// every frame of the stream it is bound to until recording stops.
 /// </summary>
-/// <remarks>Timestamps are microseconds since the first frame, taken from <c>SensorTimestamp</c>.</remarks>
-internal abstract class Encoder : IDisposable
+/// <remarks>
+/// Timestamps are microseconds since the first frame, taken from <c>SensorTimestamp</c>. A recording starts,
+/// feeds and stops its encoder in that order: the session's loop enqueues frames only between an attach and a
+/// detach. Stopping has two parts with one owner each: the camera's close only drains the encoder
+/// (<see cref="Drain"/>), so no frame is read after its buffer is freed; the recording alone finishes it
+/// (<see cref="Stop"/>), flushing libav and closing the output.
+/// </remarks>
+internal abstract class Encoder
 {
-    private readonly Lock _lock = new();
     private long? _firstTimestamp;
     private Channel<CapturedFrame>? _queue;
     private Task? _worker;
@@ -24,13 +28,13 @@ internal abstract class Encoder : IDisposable
     /// <summary>Frames encoded since <see cref="Start"/>.</summary>
     public long FramesEncoded { get; private set; }
 
-    /// <summary>Nominal frame rate, used by encoders that must state one. Filled in from the camera if left null.</summary>
-    public double? FrameRate { get; set; }
+    /// <summary>Nominal frame rate, used by encoders that must state one. Set by <c>CameraSession.PrepareEncoder</c>.</summary>
+    public double FrameRate { get; set; }
 
-    /// <summary>Frame width in pixels. Set from the camera configuration by <c>StartEncoder</c>.</summary>
+    /// <summary>Frame width in pixels. Set from the camera configuration by <c>CameraSession.PrepareEncoder</c>.</summary>
     public int Width { get; set; }
 
-    /// <summary>Frame height in pixels. Set from the camera configuration by <c>StartEncoder</c>.</summary>
+    /// <summary>Frame height in pixels. Set from the camera configuration by <c>CameraSession.PrepareEncoder</c>.</summary>
     public int Height { get; set; }
 
     /// <summary>Bytes from one row of the source frame to the next. Set from the camera configuration.</summary>
@@ -40,53 +44,50 @@ internal abstract class Encoder : IDisposable
     public PixelFormat Format { get; set; }
 
     /// <summary>The colour space the camera delivers, for encoders that tag their output. Set from the camera configuration.</summary>
-    public ColorSpace? ColourSpace { get; set; }
+    public ColorSpace? ColorSpace { get; set; }
 
     /// <summary>
     /// Prepares the encoder and opens its outputs. <paramref name="quality"/> applies only when the
     /// encoder has no explicit bitrate set.
     /// </summary>
     /// <exception cref="InvalidOperationException">Already running, or there is no output.</exception>
-    public void Start(Quality? quality = null)
+    public void Start(VideoQuality quality)
     {
-        lock (_lock)
+        if (Running)
+            throw new InvalidOperationException("The encoder is already running.");
+        if (Output is not { } output)
+            throw new InvalidOperationException("Set an output before starting the encoder.");
+
+        FramesEncoded = 0;
+        _firstTimestamp = null;
+        Setup(quality);
+
+        // A start that fails part-way releases what it opened, so nothing is left allocated or open.
+        try
         {
-            if (Running)
-                throw new InvalidOperationException("The encoder is already running.");
-            if (Output is not { } output)
-                throw new InvalidOperationException("Set an output before starting the encoder.");
-
-            FramesEncoded = 0;
-            _firstTimestamp = null;
-            Setup(quality ?? Quality.Medium);
-
-            // A start that fails part-way releases what it opened, so nothing is left allocated or open.
+            output.Start();
+            Started();
+            output.DescribeStream(StreamInfo);
+        }
+        catch
+        {
             try
             {
-                output.Start();
-                Started();
-                output.DescribeStream(StreamInfo);
+                Stopped();
             }
-            catch
+            finally
             {
-                try
-                {
-                    Stopped();
-                }
-                finally
-                {
-                    output.Stop();
-                }
-                throw;
+                output.Stop();
             }
-            Running = true;
-
-            // Frames are encoded on this encoder's own thread, so libcamera's thread only hands them over.
-            var queue = Channel.CreateUnbounded<CapturedFrame>(new UnboundedChannelOptions { SingleReader = true });
-            _queue = queue;
-            _worker = Task.Factory.StartNew(() => EncodeQueued(queue.Reader), CancellationToken.None,
-                                            TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            throw;
         }
+        Running = true;
+
+        // Frames are encoded on this encoder's own thread, so the camera's loop only hands them over.
+        var queue = Channel.CreateUnbounded<CapturedFrame>(new UnboundedChannelOptions { SingleReader = true });
+        _queue = queue;
+        _worker = Task.Factory.StartNew(() => EncodeQueued(queue.Reader), CancellationToken.None,
+                                        TaskCreationOptions.LongRunning, TaskScheduler.Default);
     }
 
     /// <summary>
@@ -122,24 +123,26 @@ internal abstract class Encoder : IDisposable
         }
     }
 
-    /// <summary>Encodes the frames already queued, then flushes and closes the encoder and its outputs.</summary>
+    /// <summary>
+    /// Takes no more frames and waits until the ones already queued are encoded and handed back. Safe to call from
+    /// several threads, and more than once: each call waits for the same thread to end.
+    /// </summary>
+    public void Drain()
+    {
+        _queue?.Writer.TryComplete();
+        _worker?.GetAwaiter().GetResult();
+    }
+
+    /// <summary>Drains the encoder, then flushes and closes it and its output. Only the recording that owns it calls this.</summary>
+    /// <remarks>A stop before a start, or a second stop, does nothing.</remarks>
     public void Stop()
     {
-        var queue = Interlocked.Exchange(ref _queue, null);
-        if (queue is not null)
-        {
-            queue.Writer.TryComplete();
-            Interlocked.Exchange(ref _worker, null)?.GetAwaiter().GetResult();
-        }
-
-        lock (_lock)
-        {
-            if (!Running)
-                return;
-            Running = false;
-            Stopped();
-            Output?.Stop();
-        }
+        Drain();
+        if (!Running)
+            return;
+        Running = false;
+        Stopped();
+        Output?.Stop();
     }
 
     /// <summary>
@@ -150,30 +153,11 @@ internal abstract class Encoder : IDisposable
     {
         if (!Running)
             return;
-        if (_startWhen is { } ready)
-        {
-            if (!ready(request))
-                return;
-            _startWhen = null;
-        }
 
         using var mapped = new MappedFrame(request, SessionStream.Capture);
-        lock (_lock)
-        {
-            if (!Running)
-                return;
-            EncodeFrame(mapped, TimestampOf(request));
-        }
+        EncodeFrame(mapped, TimestampOf(request));
         FramesEncoded++;
     }
-
-    /// <summary>
-    /// Holds the first frames back until one passes: a recording started with new controls begins at
-    /// the first frame taken with them. Only the start is gated; a change mid-recording drops nothing.
-    /// </summary>
-    internal Func<CapturedFrame, bool>? StartWhen { set => _startWhen = value; }
-
-    private Func<CapturedFrame, bool>? _startWhen;
 
     /// <summary>Encodes one frame and calls <see cref="OutputFrame"/> with the result.</summary>
     /// <param name="frame">
@@ -188,7 +172,7 @@ internal abstract class Encoder : IDisposable
     protected abstract VideoStreamInfo StreamInfo { get; }
 
     /// <summary>Applies <paramref name="quality"/> to the encoder's own settings before it starts.</summary>
-    protected virtual void Setup(Quality quality)
+    protected virtual void Setup(VideoQuality quality)
     {
     }
 
@@ -215,12 +199,5 @@ internal abstract class Encoder : IDisposable
         var sensorTimestamp = request.Metadata.TryGet(Controls.SensorTimestamp, out var nanoseconds) ? nanoseconds / 1000 : 0;
         _firstTimestamp ??= sensorTimestamp;
         return sensorTimestamp - _firstTimestamp.Value;
-    }
-
-    /// <summary>Stops the encoder if it is still running.</summary>
-    public virtual void Dispose()
-    {
-        Stop();
-        GC.SuppressFinalize(this);
     }
 }

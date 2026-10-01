@@ -13,16 +13,36 @@ namespace LibcameraSharp;
 /// </remarks>
 internal static class DngWriter
 {
-    // Tag numbers, as tiff.h defines them.
+    // Tag numbers, as tiff.h defines them; the ones a JPEG's EXIF also carries come from ExifTag.
     private const ushort SubfileType = 254, ImageWidth = 256, ImageLength = 257, BitsPerSample = 258, Compression = 259, Photometric = 262,
-        Make = 271, Model = 272, Orientation = 274, SamplesPerPixel = 277, PlanarConfig = 284, Software = 305, SubIfds = 330,
-        CfaRepeatPatternDim = 33421, CfaPattern = 33422, ExposureTime = 33434, ExifIfd = 34665, IsoSpeedRatings = 34855, DateTimeOriginal = 36867,
-        SubjectDistance = 37382, DngVersion = 50706, DngBackwardVersion = 50707, UniqueCameraModel = 50708, BlackLevelRepeatDim = 50713,
+        Orientation = 274, SamplesPerPixel = 277, PlanarConfig = 284, SubIfds = 330,
+        CfaRepeatPatternDim = 33421, CfaPattern = 33422, ExifIfd = 34665,
+        DngVersion = 50706, DngBackwardVersion = 50707, UniqueCameraModel = 50708, BlackLevelRepeatDim = 50713,
         BlackLevel = 50714, WhiteLevel = 50717, ColorMatrix1 = 50721, CameraCalibration1 = 50723, CameraCalibration2 = 50724,
         AsShotNeutral = 50728, CalibrationIlluminant1 = 50778;
+    private const ushort Make = (ushort)ExifTag.Make, Model = (ushort)ExifTag.Model, Software = (ushort)ExifTag.Software,
+        ExposureTime = (ushort)ExifTag.ExposureTime, IsoSpeedRatings = (ushort)ExifTag.IsoSpeedRatings,
+        DateTimeOriginal = (ushort)ExifTag.DateTimeOriginal, SubjectDistance = (ushort)ExifTag.SubjectDistance;
 
     private const uint CompressionNone = 1, PhotometricRgb = 2, PhotometricCfa = 32803, PhotometricLinearRaw = 34892, OrientationTopLeft = 1,
         PlanarContiguous = 1, IlluminantD65 = 21;
+
+    // SubfileType: the thumbnail is a reduced-resolution image, the raw one the full image (tiff.h FILETYPE_REDUCEDIMAGE).
+    private const uint ReducedImage = 1, FullImage = 0;
+
+    // DNG 1.4, readable by readers of DNG 1.0 onwards.
+    private static readonly byte[] Version = [1, 4, 0, 0], BackwardVersion = [1, 0, 0, 0];
+
+    // What the file says when the frame's metadata doesn't: a 10 ms exposure at unity gain.
+    private const int FallbackExposureMicroseconds = 10_000;
+    private const float UnityGain = 1f;
+
+    // The thumbnail is 1/16 of the image each way. Four samples summed add two bits, so shifting by 14 then down by
+    // the sample depth puts the sum on a 16-bit scale, whose square root fits a byte.
+    private const int ThumbnailShift = 4, SummedTo16Bits = 14;
+
+    // After the directories are written, libtiff leaves the last one also chained as a third top-level directory.
+    private const int StrayDirectory = 2;
 
     /// <summary>
     /// Writes the raw stream buffer <paramref name="raw"/> described by <paramref name="config"/> as a DNG
@@ -46,21 +66,21 @@ internal static class DngWriter
         var blackLevels = BlackLevels(metadata, format, bits);
 
         // Colour: ColorMatrix1 maps XYZ to camera RGB, so invert (sRGB→XYZ · CCM · white-balance gains).
-        var gains = metadata.TryGet(Controls.ColourGains, out var cg) && cg.Length == 2 ? cg : [1f, 1f];
+        var gains = metadata.TryGet(Controls.ColourGains, out var cg) && cg.Length == Controls.ColourGains.FixedLength ? cg : [UnityGain, UnityGain];
         float[] neutral = [1f / gains[0], 1f, 1f / gains[1]];
-        var ccm = metadata.TryGet(Controls.ColourCorrectionMatrix, out var m) && m.Length == 9 ? m.Select(v => (double)v).ToArray() : DefaultCcm;
+        var ccm = metadata.TryGet(Controls.ColourCorrectionMatrix, out var m) && m.Length == Controls.ColourCorrectionMatrix.FixedLength ? m.Select(v => (double)v).ToArray() : DefaultCcm;
         var cameraToXyz = Matrix3.Invert(Matrix3.Multiply(Matrix3.Multiply(Rgb2Xyz, ccm), Matrix3.Diagonal(gains[0], 1, gains[1])));
 
-        var exposureUs = metadata.TryGet(Controls.ExposureTime, out var exp) ? exp : 10000;
-        var iso = (ushort)((metadata.TryGet(Controls.AnalogueGain, out var ag) ? ag : 1f) * (metadata.TryGet(Controls.DigitalGain, out var dg) ? dg : 1f) * 100);
-        var timestamp = DateTime.Now.ToString("yyyy:MM:dd HH:mm:ss");
+        var exposureUs = metadata.TryGet(Controls.ExposureTime, out var exp) ? exp : FallbackExposureMicroseconds;
+        var iso = ExifSegment.Iso((metadata.TryGet(Controls.AnalogueGain, out var ag) ? ag : UnityGain) * (metadata.TryGet(Controls.DigitalGain, out var dg) ? dg : UnityGain));
+        var timestamp = ExifSegment.DateTimeText(DateTime.Now);
         var thumb = Thumbnail(samples, width, height, bits, out var thumbWidth, out var thumbHeight);
 
         var tif = Libtiff.Create(path);
         try
         {
             // IFD0: a 1/16-scale greyscale thumbnail, first so software that reads only one IFD shows something.
-            Libtiff.Set(tif, SubfileType, 1);
+            Libtiff.Set(tif, SubfileType, ReducedImage);
             Libtiff.Set(tif, ImageWidth, (uint)thumbWidth);
             Libtiff.Set(tif, ImageLength, (uint)thumbHeight);
             Libtiff.Set(tif, BitsPerSample, 8);
@@ -69,8 +89,8 @@ internal static class DngWriter
             if (ExifSegment.Maker is { } maker)
                 Libtiff.Set(tif, Make, maker);
             Libtiff.Set(tif, Model, cameraModel);
-            Libtiff.SetFixed<byte>(tif, DngVersion, [1, 4, 0, 0]);
-            Libtiff.SetFixed<byte>(tif, DngBackwardVersion, [1, 0, 0, 0]);
+            Libtiff.SetFixed<byte>(tif, DngVersion, Version);
+            Libtiff.SetFixed<byte>(tif, DngBackwardVersion, BackwardVersion);
             Libtiff.Set(tif, UniqueCameraModel, ExifSegment.Maker is { } make ? $"{make} {cameraModel}" : cameraModel);
             Libtiff.Set(tif, Orientation, OrientationTopLeft);
             Libtiff.Set(tif, SamplesPerPixel, 3);
@@ -94,7 +114,7 @@ internal static class DngWriter
 
             // The raw image itself, which libtiff writes as IFD0's sub-directory.
             Libtiff.RegisterCfaFields(tif);
-            Libtiff.Set(tif, SubfileType, 0);
+            Libtiff.Set(tif, SubfileType, FullImage);
             Libtiff.Set(tif, ImageWidth, (uint)width);
             Libtiff.Set(tif, ImageLength, (uint)height);
             Libtiff.Set(tif, BitsPerSample, 16);
@@ -135,7 +155,7 @@ internal static class DngWriter
             Libtiff.Set<ulong>(tif, SubIfds, [rawOffset]);
             Libtiff.SetOffset(tif, ExifIfd, exifOffset);
             Libtiff.WriteDirectory(tif);
-            Libtiff.UnlinkDirectory(tif, 2);
+            Libtiff.UnlinkDirectory(tif, StrayDirectory);
         }
         finally
         {
@@ -144,6 +164,7 @@ internal static class DngWriter
     }
 
     // Used when the metadata lacks them: black at 4096/65536 of full scale, and a plausible CCM.
+    private const int FallbackBlackLevel = 4096, BlackLevelScale = 65536;
     private static readonly double[] DefaultCcm = [1.90255, -0.77478, -0.12777, -0.31338, 1.88197, -0.56858, -0.06001, -0.61785, 1.67786];
 
     // sRGB (D65) to XYZ, from http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html.
@@ -153,9 +174,12 @@ internal static class DngWriter
 
     private static double[] BlackLevels(Metadata metadata, BayerFormat format, int bits)
     {
-        var scale = (1 << bits) / 65536.0;
-        if (!metadata.TryGet(Controls.SensorBlackLevels, out var reported) || reported.Length < 4)
-            return [4096 * scale, 4096 * scale, 4096 * scale, 4096 * scale];
+        var scale = (1 << bits) / (double)BlackLevelScale;
+        if (!metadata.TryGet(Controls.SensorBlackLevels, out var reported) || reported.Length < Controls.SensorBlackLevels.FixedLength)
+        {
+            var fallback = FallbackBlackLevel * scale;
+            return [fallback, fallback, fallback, fallback];
+        }
         if (format.IsMono)
             return [reported[0] * scale, 0, 0, 0];
 
@@ -184,17 +208,17 @@ internal static class DngWriter
     // A 1/16-scale grey preview: sum of the top-left 2×2 block of each 16×16 tile, scaled to 8 bits, square-rooted as a crude gamma.
     private static byte[] Thumbnail(ushort[] samples, int width, int height, int bits, out int thumbWidth, out int thumbHeight)
     {
-        thumbWidth = width >> 4;
-        thumbHeight = height >> 4;
+        thumbWidth = width >> ThumbnailShift;
+        thumbHeight = height >> ThumbnailShift;
         var thumb = new byte[thumbWidth * thumbHeight * 3];
         for (var y = 0; y < thumbHeight; y++)
         {
             for (var x = 0; x < thumbWidth; x++)
             {
-                var offset = ((y * width) + x) << 4;
+                var offset = ((y * width) + x) << ThumbnailShift;
                 uint grey = (uint)(samples[offset] + samples[offset + 1] + samples[offset + width] + samples[offset + width + 1]);
-                grey = (grey << 14) >> bits;
-                var value = (byte)Math.Min(255, Math.Sqrt(grey));
+                grey = (grey << SummedTo16Bits) >> bits;
+                var value = (byte)Math.Min(byte.MaxValue, Math.Sqrt(grey));
                 var i = 3 * (y * thumbWidth + x);
                 thumb[i] = thumb[i + 1] = thumb[i + 2] = value;
             }

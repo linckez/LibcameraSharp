@@ -19,7 +19,7 @@ internal abstract unsafe class LibavEncoder : Encoder
     protected abstract VideoCodec Codec { get; }
 
     /// <inheritdoc/>
-    protected override VideoStreamInfo StreamInfo => new(Codec, Width, Height, FrameRate ?? 30, _extraData, ColourSpace);
+    protected override VideoStreamInfo StreamInfo => new(Codec, Width, Height, FrameRate, _extraData, ColorSpace);
 
     /// <summary>Sets the codec's own options on the context before it opens.</summary>
     protected virtual void Configure(AVCodecContext* context, bool hardware)
@@ -42,15 +42,15 @@ internal abstract unsafe class LibavEncoder : Encoder
         _context->width = Width;
         _context->height = Height;
         _context->pix_fmt = AVPixelFormat.AV_PIX_FMT_YUV420P;
-        _context->time_base = new AVRational { num = 1, den = 1_000_000 };       // timestamps are microseconds
-        _context->framerate = new AVRational { num = (int)((FrameRate ?? 30) * 1000), den = 1000 };   // to a thousandth, so 29.97 stays 29.97
+        _context->time_base = Libav.MicrosecondTimeBase;
+        _context->framerate = Libav.FrameRate(FrameRate);
         _context->thread_count = 0;                                             // let libav choose
         // SPS/PPS out of band only when the output keeps them; otherwise they repeat in the stream.
         if (Output?.StoresStreamHeaders == true)
             _context->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
 
         // Tag the stream with the camera's colour space, so players don't have to guess it.
-        if (ColourSpace is { } colourSpace)
+        if (ColorSpace is { } colourSpace)
         {
             _context->color_primaries = LibavColourTags.Primaries(colourSpace);
             _context->color_trc = LibavColourTags.Transfer(colourSpace);

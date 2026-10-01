@@ -1,31 +1,24 @@
 namespace LibcameraSharp;
 
-public sealed partial class CameraDevice
+public partial class CameraDevice
 {
-    /// <summary>Takes a photograph with the camera's default photo settings.</summary>
-    public Task<Photo> CapturePhotoAsync(CancellationToken cancellationToken = default) =>
-        CapturePhotoAsync(new PhotoOptions(), cancellationToken);
-
     /// <summary>
-    /// Takes a photograph with these options. The same options twice cost nothing. On a camera with
-    /// autofocus, it focuses first unless the options set <see cref="CameraControls.Focus"/>.
+    /// Takes a photograph with these options. The same options twice don't reconfigure the camera, except on a
+    /// camera with autofocus: unless the options set <see cref="CameraControls.Focus"/>, each photo first scans in a
+    /// viewfinder setup, then reconfigures for the photo.
     /// </summary>
     /// <returns>The photo, with its pixels, what the camera did, and the raw image when asked for.</returns>
-    /// <exception cref="InvalidOperationException">A recording is running with different options.</exception>
-    public async Task<Photo> CapturePhotoAsync(PhotoOptions options, CancellationToken cancellationToken = default)
+    /// <exception cref="InvalidOperationException">A recording is running: a photo would reconfigure the camera under it.</exception>
+    /// <param name="options">How to take the photo; the camera's default photo settings when null. An override gets null when the caller passed none.</param>
+    /// <param name="cancellationToken">Cancels the capture.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
+    public virtual Task<Photo> CapturePhotoAsync(PhotoOptions? options = null, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        options ??= new PhotoOptions();
+        options.Controls.ThrowIfInvalid(nameof(options));
 
-        // One call that sets the camera up at a time, so two callers can't reconfigure it under each other.
-        await _calls.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            return await TakePhotoAsync(options, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _calls.Release();
-        }
+        // A photo is one job, from its focus scan to its frame, so no other call's setup can land in between.
+        return RunExclusiveAsync(() => TakePhotoAsync(options, cancellationToken), cancellationToken);
     }
 
     private async Task<Photo> TakePhotoAsync(PhotoOptions options, CancellationToken cancellationToken)
@@ -34,7 +27,7 @@ public sealed partial class CameraDevice
 
         // Unless the options fix the focus, a camera that can focus scans first, in a viewfinder, and
         // the photo keeps the lens where the scan left it.
-        if (CanFocus && controls.Focus is null or { Mode: AfMode.Auto, CancelsScan: false })
+        if (Session.CanFocus && controls.Focus is null or { Mode: AfMode.Auto, CancelsScan: false })
         {
             await FocusAsync(options.Streams, controls, cancellationToken).ConfigureAwait(false);
             controls = controls with { Focus = FocusMode.KeepScanned };
@@ -45,18 +38,14 @@ public sealed partial class CameraDevice
             ? options.Streams with { CaptureFormat = PixelFormats.YUV420 }
             : options.Streams;
 
-        ApplyOptions(streams, controls, CameraUse.Photo);
-        if (!_session.Started)
-            _session.Start();
-
-        // A frame taken with these controls, not one already in flight when they were sent.
-        var target = _session.TakeControlsTarget();
-        using var frame = await _session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
+        // A frame taken with these controls, not one already in flight when they were sent. It's copied here, off
+        // the camera's loop, so a full-sensor copy never holds up other streams.
+        var setup = await Session.SetUpAsync(streams, controls, CameraUse.Photo).ConfigureAwait(false);
+        using var frame = await Session.NextFrameAsync(setup.Target, cancellationToken).ConfigureAwait(false);
 
         var pixels = frame.CopyPixels();
         var metadata = frame.Metadata;
-        // The model libcamera reports, or the camera's id when it reports none.
-        var model = _session.CameraProperties.TryGet(Properties.Model, out var name) && name.Length > 0 ? name : _session.CameraId;
+        var model = Session.Facts.Model;
 
         RawImage? raw = null;
         if (frame.Streams.ContainsKey(SessionStream.Raw))
@@ -64,7 +53,7 @@ public sealed partial class CameraDevice
             var rawStream = frame.Config[SessionStream.Raw]!;
             raw = new RawImage(frame.MakeBuffer(SessionStream.Raw), metadata, rawStream, model,
                 rawStream.Format is { } format ? BayerFormat.FromPixelFormat(format) : null,
-                rawStream.Size ?? default);
+                rawStream.Size!.Value);                                         // set once configured
         }
 
         return new Photo(pixels, metadata, model, raw, options);
@@ -76,35 +65,25 @@ public sealed partial class CameraDevice
     {
         const int FramesToStart = 16;
 
-        ApplyOptions(new StreamSettings { CaptureSize = ViewfinderSize(photo.CaptureSize) }, controls with { Focus = FocusMode.Auto }, CameraUse.Frames);
-        if (!_session.Started)
-            _session.Start();
-        var target = _session.TakeControlsTarget();
-
-        var started = false;
-        for (var frames = 0; ; frames++)
-        {
-            using var frame = await _session.CaptureRequestWithControlsAsync(target, cancellationToken).ConfigureAwait(false);
-            var scanning = frame.Metadata.TryGet(Controls.AfState, out var state) && state == AfState.Scanning;
-            if (scanning)
-                started = true;
-            else if (started || frames >= FramesToStart)
-                return;
-        }
+        var setup = await Session.SetUpAsync(new StreamSettings { CaptureSize = ViewfinderSize(photo.CaptureSize) },
+            controls with { Focus = FocusMode.Auto }, CameraUse.Frames).ConfigureAwait(false);
+        using var ended = await Session.WaitForFocusScanAsync(setup.Target, FramesToStart, cancellationToken).ConfigureAwait(false);
     }
 
     // Half the sensor's active area, which most sensors bin to; with a photo size, the same field of
-    // view as the photo. 1280×960 when the camera reports no active area.
+    // view as the photo. The fallback size when the camera reports no active area.
     private Size ViewfinderSize(Size? photoSize)
     {
-        if (!_session.CameraProperties.TryGet(Properties.PixelArrayActiveAreas, out var areas) || areas.Length == 0)
-            return new Size(1280, 960);
+        if (Session.Facts.ActiveArea is not { } area)
+            return FallbackViewfinderSize;
 
-        var size = new Size(areas[0].Width / 2, areas[0].Height / 2);
+        var size = new Size(area.Width / 2, area.Height / 2);
         if (photoSize is { Width: > 0, Height: > 0 } ratio)
             size = BoundedToAspectRatio(size, ratio);
-        return new Size(size.Width & ~1u, size.Height & ~1u);
+        return new Size(size.Width & ~1u, size.Height & ~1u);                  // even, which every format accepts
     }
+
+    private static readonly Size FallbackViewfinderSize = new(1280, 960);
 
     // The largest size within size that has ratio's aspect ratio.
     private static Size BoundedToAspectRatio(Size size, Size ratio)

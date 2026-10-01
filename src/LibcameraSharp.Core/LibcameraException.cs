@@ -19,17 +19,20 @@ public class LibcameraException : Exception
         Errno = errno;
     }
 
-    /// <summary>Creates an exception for a failure that has no errno.</summary>
-    public LibcameraException(string message) : base("libcamera: " + message)
+    /// <summary>Creates an exception for a failed libcamera call that reports no errno.</summary>
+    /// <param name="operation">What was attempted, e.g. <c>"create request"</c>.</param>
+    /// <param name="reason">Why it failed, e.g. <c>"configure the camera first"</c>.</param>
+    public LibcameraException(string operation, string reason)
+        : base($"libcamera: failed to {operation}: {reason}")
     {
-        Operation = message;
+        Operation = operation;
     }
 
     /// <summary>What was being attempted.</summary>
     public string Operation { get; }
 
-    /// <summary>Linux errno, or 0 when not applicable.</summary>
-    public int Errno { get; }
+    /// <summary>Linux errno, or null when libcamera reported none.</summary>
+    public int? Errno { get; }
 
     /// <summary>Throws when <paramref name="ret"/> is negative, following libcamera's "negative errno" convention.</summary>
     internal static void ThrowIfError(int ret, string operation)

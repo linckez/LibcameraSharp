@@ -34,11 +34,16 @@ internal static unsafe class Libexif
 
     /// <summary>
     /// Sets <paramref name="tag"/> to <paramref name="value"/>, stored as <paramref name="count"/> values of
-    /// TIFF type <paramref name="format"/>, in IFD0 or, when <paramref name="exifDirectory"/>, the EXIF directory.
+    /// TIFF type <paramref name="format"/>, in <paramref name="directory"/>.
     /// </summary>
-    public static void Set(nint data, bool exifDirectory, ushort tag, TiffType format, uint count, ReadOnlySpan<byte> value)
+    public static void Set(nint data, ExifDirectory directory, ushort tag, TiffType format, uint count, ReadOnlySpan<byte> value)
     {
-        var ifd = exifDirectory ? exif_block_ifd.EXIF_BLOCK_IFD_EXIF : exif_block_ifd.EXIF_BLOCK_IFD_0;
+        var ifd = directory switch
+        {
+            ExifDirectory.Exif => exif_block_ifd.EXIF_BLOCK_IFD_EXIF,
+            ExifDirectory.Gps => exif_block_ifd.EXIF_BLOCK_IFD_GPS,
+            _ => exif_block_ifd.EXIF_BLOCK_IFD_0,
+        };
         fixed (byte* p = value)
         {
             if (NativeMethods.exif_block_set((_ExifData*)data, ifd, tag, (ushort)format, count, p, (uint)value.Length) != 0)

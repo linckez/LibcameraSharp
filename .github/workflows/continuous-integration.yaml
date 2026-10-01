@@ -64,15 +64,10 @@ jobs:
 
   verify-abi:
     name: Verify against Raspberry Pi OS libcamera (arm64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm   # native arm64: the Pi OS container runs without emulation
     steps:
       - name: Repository Checkout 📥
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Setup QEMU for arm64 🖥️
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
-        with:
-          platforms: arm64
 
       - name: Build shim, regenerate, run camera-free tests 🐞
         shell: bash

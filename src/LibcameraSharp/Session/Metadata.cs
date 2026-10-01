@@ -29,6 +29,13 @@ internal sealed class Metadata : IReadOnlyCollection<KeyValuePair<ControlKey, ob
         }
     }
 
+    /// <summary>Metadata from values you already have, such as a model factory's; a later value for the same control wins.</summary>
+    public Metadata(IEnumerable<KeyValuePair<ControlKey, object>> values)
+    {
+        foreach (var (key, value) in values)
+            _values[key.Id] = new(key, value);
+    }
+
     /// <summary>No metadata — for encoding a frame that did not come from a request.</summary>
     public static Metadata Empty { get; } = new();
 

@@ -3,7 +3,7 @@
 
 Input (vendored per libcamera version under src/LibcameraSharp.Core/Generate/inputs/<version>/):
   bayer_format.cpp     libcamera's `bayerToFormat` map: (order, bit depth, packing) -> PixelFormat
-Output (src/LibcameraSharp.Core/Generated/):
+Output (src/LibcameraSharp.Core/Formats/):
   BayerFormats.g.cs    `static class BayerFormats` with FromPixelFormat / ToPixelFormat switches
 
 libcamera keeps BayerFormat internal (not in the public headers, so not in the shim); its table is
@@ -31,7 +31,7 @@ ORDER = {"BGGR": "BGGR", "GBRG": "GBRG", "GRBG": "GRBG", "RGGB": "RGGB", "MONO":
 
 
 def emit(entries: list[tuple[str, int, str, str]], codes: dict[str, tuple[int, int]], version: str) -> str:
-    out = [HEADER, "namespace LibcameraSharp;", ""]
+    out = [HEADER, "namespace LibcameraSharp.Core;", ""]
     out.append(f"/// <summary>libcamera {version}'s table of raw (Bayer and mono) pixel formats and their layout: colour order, bit depth, packing.</summary>")
     out.append(GENERATED_ATTR.format(version=version))
     out.append("public static class BayerFormats")
@@ -60,7 +60,7 @@ def main() -> int:
     root = Path(__file__).resolve().parents[3]
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--inputs", type=Path, default=None)
-    ap.add_argument("--out-dir", type=Path, default=root / "src" / "LibcameraSharp.Core" / "Generated")
+    ap.add_argument("--out-dir", type=Path, default=root / "src" / "LibcameraSharp.Core" / "Formats")
     args = ap.parse_args()
     inputs = args.inputs or next(iter(sorted((Path(__file__).resolve().parent / "inputs").iterdir())))
     version = inputs.name.removeprefix("libcamera-")

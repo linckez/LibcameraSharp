@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 /// <summary>

@@ -14,7 +14,7 @@ see [Raspberry Pi setup](raspberry-pi.md).
 ```csharp
 using LibcameraSharp;
 
-using CameraDevice camera = CameraDevice.Open();            // the first camera
+await using CameraDevice camera = CameraDevice.Open();            // the first camera
 
 Photo photo = await camera.CapturePhotoAsync();
 await photo.SaveAsync("photo.jpg");                          // .png and .bmp work the same way
@@ -32,7 +32,7 @@ set the camera up again:
 static readonly PhotoOptions Night = new()
 {
     Streams  = new StreamSettings { CaptureSize = new Size(2028, 1520) },
-    Controls = new CameraControls { Exposure = TimeSpan.FromMilliseconds(80), Gain = 8.0f },
+    Controls = new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.FromMilliseconds(80)), Gain = GainMode.Fixed(8.0f) },
     JpegQuality = 95,
 };
 
@@ -64,10 +64,20 @@ Everything else — encoding, JPEG quality, EXIF — only shapes the file.
 libcamera logs to stderr. In a service:
 
 ```csharp
-LibcameraLog.SetLevel(LogLevel.Error);         // errors only, from here on
+LibcameraLog.SetLevel(LibcameraLogLevel.Error);    // errors only, from here on
 ```
 
 ## Cleaning up
 
-Dispose the `CameraDevice` to release the camera for other processes. Only one process can hold a
+Dispose the `CameraDevice` (`await using`; it has no synchronous `Dispose`) to release the camera for other processes. Only one process can hold a
 camera at a time; a second gets `CameraBusyException`.
+
+Registered as a singleton in an ASP.NET Core or Generic Host app, the camera is disposed for you when the app
+stops. A service provider you build and dispose yourself needs `await using` too: disposing it synchronously
+throws `InvalidOperationException` for a service that can only be disposed asynchronously.
+
+## Testing without a camera
+
+On a laptop or a CI runner there is no camera. Derive from `CameraDevice` (or mock it) and override what your
+code calls; `LibcameraSharpModelFactory` builds the photos, frames and capabilities to return. A working fake
+camera and a Moq example are in [`tests/LibcameraSharp.Scenarios/Testing.cs`](../tests/LibcameraSharp.Scenarios/Testing.cs).

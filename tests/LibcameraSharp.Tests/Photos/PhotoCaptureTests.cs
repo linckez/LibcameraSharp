@@ -18,9 +18,9 @@ public class PhotoCaptureTests : IDisposable
         var jpeg = Path.Combine(_directory, "photo.jpg");
         var png = Path.Combine(_directory, "photo.png");
 
-        using (var camera = CameraDevice.Open())
+        await using (var camera = CameraDevice.Open())
         {
-            var photo = await camera.CapturePhotoAsync(TestContext.Current.CancellationToken);
+            var photo = await camera.CapturePhotoAsync(cancellationToken: TestContext.Current.CancellationToken);
             await photo.SaveAsync(jpeg, TestContext.Current.CancellationToken);
             await photo.SaveAsync(png, TestContext.Current.CancellationToken);
 
@@ -42,7 +42,7 @@ public class PhotoCaptureTests : IDisposable
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
         var path = Path.Combine(_directory, "small.png");
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
 
         var photo = await camera.CapturePhotoAsync(new PhotoOptions
         {
@@ -62,7 +62,7 @@ public class PhotoCaptureTests : IDisposable
     {
         Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
 
-        using var camera = CameraDevice.Open();
+        await using var camera = CameraDevice.Open();
         var options = new PhotoOptions { Streams = new StreamSettings { CaptureSize = new Size(640, 480) } };
 
         await camera.CapturePhotoAsync(options, TestContext.Current.CancellationToken);
