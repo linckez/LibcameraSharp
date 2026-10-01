@@ -259,4 +259,15 @@ public class OptionsTranslationTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { FrameRate = 0 }.ThrowIfInvalid("options"));
         Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { FrameRate = (0, 30) }.ThrowIfInvalid("options"));
     }
+
+    [Theory]
+    [InlineData(0.5f)]                       // libcamera: AnalogueGain "cannot be lower than 1.0"
+    [InlineData(-2f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void A_gain_libcamera_does_not_allow_is_refused(float gain) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => GainMode.Fixed(gain));
+
+    [Fact]
+    public void A_gain_of_exactly_one_is_allowed() => Assert.Equal(1f, GainMode.Fixed(1f).Gain);
 }

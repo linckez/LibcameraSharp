@@ -12,11 +12,13 @@ public readonly record struct GainMode
     public static GainMode Auto => default;
 
     /// <summary>Hold the analogue gain at <paramref name="gain"/>, from 1.0 up; the maximum depends on the sensor.</summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="gain"/> is zero, which means automatic.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="gain"/> is below 1.0, which libcamera doesn't allow (zero would mean automatic), or isn't a finite number.
+    /// </exception>
     public static GainMode Fixed(float gain)
     {
-        if (gain == 0)
-            throw new ArgumentOutOfRangeException(nameof(gain), gain, "A gain of zero means automatic; use GainMode.Auto.");
+        if (!(gain >= 1) || float.IsInfinity(gain))
+            throw new ArgumentOutOfRangeException(nameof(gain), gain, "A fixed gain is a finite multiplier from 1.0 up; use GainMode.Auto for automatic.");
         return new(gain);
     }
 
