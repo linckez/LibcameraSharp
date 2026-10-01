@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
@@ -50,7 +48,7 @@ internal sealed partial class CameraSession
             if (!ControlsLanded(request, target))
                 return false;
             var index = seen++;
-            if (request.Metadata.TryGet(LibcameraSharp.Controls.AfState, out var state) && state == AfState.Scanning)
+            if (request.Metadata.TryGet(Controls.AfState, out var state) && state == AfState.Scanning)
             {
                 started = true;
                 return false;
@@ -124,7 +122,7 @@ internal sealed partial class CameraSession
 
                 // A camera already configured starts as it is: a recording set up for that configuration may be about to
                 // attach, and must find the camera still in it. Only one never configured gets the frame defaults.
-                if (CameraConfiguration is null)
+                if (Configuration is null)
                     SetUp(new StreamSettings(), new CameraControls(), CameraUse.Frames, reader: null);
                 else
                     Start();
@@ -240,7 +238,7 @@ internal sealed partial class CameraSession
 
     // A holder's own handle on a frame of the current allocation; the caller has counted its lease.
     private CapturedFrame NewFrame(Request request) =>
-        new(this, request, CameraConfiguration!, _streams, _run, _allocation!);
+        new(this, request, Configuration!, _streams, _run, _allocation!);
 
     // The kept frame goes back: a newer one replaced it, or the camera stopped.
     private void ReleaseReady()

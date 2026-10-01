@@ -16,6 +16,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- libcamera's own classes, kept out of the namespace users see; the code here uses them throughout. -->
+    <Using Include="LibcameraSharp.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="LibcameraSharp" />
     <InternalsVisibleTo Include="LibcameraSharp.Tests" />
   </ItemGroup>

@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Runtime.CompilerServices;
-
 namespace LibcameraSharp;
 
 /// <summary>
@@ -49,41 +46,4 @@ public abstract class ControlKey
 
     // Control and property ids overlap; a lookup by id alone has to know which kind a key is.
     internal virtual bool IsProperty => false;
-}
-
-/// <summary>
-/// A typed control key. <typeparamref name="T"/> is the managed type you read and write, e.g.
-/// <c>request.Controls.Set(Controls.ExposureTime, 10_000)</c>.
-/// </summary>
-/// <typeparam name="T">Managed value type: a scalar, an enum, or an array of either.</typeparam>
-public sealed class Control<T>(ControlId id, string name, ControlType type, ControlDirection direction, bool isArray, int? fixedLength)
-    : ControlKey((uint)id, name, type, direction, isArray, fixedLength, typeof(T))
-{
-    /// <summary>The id as a <see cref="ControlId"/>.</summary>
-    public ControlId ControlId { get; } = id;
-
-    internal override object BoxInt32(int value) => typeof(T).IsEnum ? Unsafe.BitCast<int, T>(value)! : value;
-}
-
-/// <summary>
-/// A typed camera property key — static facts such as <see cref="Properties.Model"/> or
-/// <see cref="Properties.PixelArraySize"/>, read with <c>camera.Properties.Get(key)</c>.
-/// </summary>
-/// <typeparam name="T">Managed value type.</typeparam>
-public sealed class Property<T>(PropertyId id, string name, ControlType type, bool isArray, int? fixedLength)
-    : ControlKey((uint)id, name, type, ControlDirection.Out, isArray, fixedLength, typeof(T))
-{
-    /// <summary>The id as a <see cref="PropertyId"/>.</summary>
-    public PropertyId PropertyId { get; } = id;
-
-    internal override object BoxInt32(int value) => typeof(T).IsEnum ? Unsafe.BitCast<int, T>(value)! : value;
-
-    internal override bool IsProperty => true;
-}
-
-/// <summary>A control id with no generated key, described from the value libcamera stored. Its name is its id.</summary>
-internal sealed class UnrecognisedControl(uint id, ControlType type, bool isArray)
-    : ControlKey(id, id.ToString(CultureInfo.InvariantCulture), type, ControlDirection.Out, isArray, fixedLength: null, typeof(object))
-{
-    internal override object BoxInt32(int value) => value;
 }

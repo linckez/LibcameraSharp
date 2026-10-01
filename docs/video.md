@@ -20,7 +20,7 @@ var clip = new VideoOptions
 {
     Streams  = new StreamSettings { CaptureSize = new Size(1920, 1080) },
     Controls = new CameraControls { FrameRate = 30 },
-    Quality  = Quality.High,
+    Quality  = VideoQuality.High,
 };
 
 VideoRecording recording = await camera.StartRecordingAsync("clip.mp4", clip);

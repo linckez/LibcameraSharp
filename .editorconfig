@@ -24,6 +24,10 @@ csharp_prefer_braces = when_multiline:suggestion
 dotnet_style_collection_initializer = true:suggestion
 dotnet_style_prefer_collection_expression = when_types_loosely_match:suggestion
 dotnet_sort_system_directives_first = true
+# Namespaces are designed for users, folders for maintainers: a folder never adds a namespace segment.
+dotnet_style_namespace_match_folder = false
+dotnet_diagnostic.IDE0130.severity = none
+resharper_check_namespace_highlighting = none
 
 # Generated interop keeps libcamera's C names on purpose.
 [*.g.cs]

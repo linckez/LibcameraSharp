@@ -2,7 +2,7 @@
 
 > A .NET 10 SDK for cameras driven by libcamera, mostly Raspberry Pi camera modules: photos (JPEG, PNG, DNG with EXIF), H.264 and MJPEG video (MP4, Matroska, MPEG-TS), live frames, and typed camera controls. NuGet package `LibcameraSharp`; `LibcameraSharp.Core` is libcamera itself for .NET. Linux arm64, libcamera 0.7.
 
-Everything is in the `LibcameraSharp` namespace. The pattern: open a `CameraDevice`, declare an options record (`PhotoOptions`, `VideoOptions`, `FrameOptions`), and pass it to the call. There is no separate configure step; passing the same options again doesn't set the camera up again. Each options record has `Streams` (sizes, formats, raw; changing them reconfigures the camera) and `Controls` (exposure, gain, focus; the call waits until they take effect).
+Everything here is in the `LibcameraSharp` namespace; only libcamera's own classes (`CameraManager`, `Request`, `FrameBuffer`, ...) are in `LibcameraSharp.Core`. The pattern: open a `CameraDevice`, declare an options record (`PhotoOptions`, `VideoOptions`, `FrameOptions`), and pass it to the call. There is no separate configure step; passing the same options again doesn't set the camera up again. Each options record has `Streams` (sizes, formats, raw; changing them reconfigures the camera) and `Controls` (exposure, gain, focus; the call waits until they take effect).
 
 ```csharp
 using LibcameraSharp;

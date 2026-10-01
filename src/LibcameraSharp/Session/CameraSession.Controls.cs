@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
@@ -19,11 +17,11 @@ internal sealed partial class CameraSession
     private PendingControls _applied;
 
     /// <summary>Controls to send with the next requests; each value goes out once.</summary>
-    public PendingControls Controls { get; private set; }
+    public PendingControls Pending { get; private set; }
 
     /// <summary>Merges <paramref name="controls"/> into the set sent with the next requests.</summary>
     /// <exception cref="ArgumentException">The camera does not advertise one of them.</exception>
-    public void SetControls(PendingControls controls) => Controls.SetControls(controls);
+    public void SetControls(PendingControls controls) => Pending.SetControls(controls);
 
     /// <summary>
     /// Digital zoom to <paramref name="region"/>, in fractions of the full field.
@@ -33,7 +31,7 @@ internal sealed partial class CameraSession
     public void SetZoom(RegionOfInterest region)
     {
         // `Controls` here is this camera's pending set, so the key table needs its full name.
-        var info = _camera.Controls.TryGet(LibcameraSharp.Controls.ScalerCrop)
+        var info = _camera.Controls.TryGet(Controls.ScalerCrop)
                    ?? throw new InvalidOperationException("This camera does not advertise ScalerCrop, so it cannot zoom.");
 
         var sensorArea = info.Max<Rectangle>();
@@ -42,14 +40,14 @@ internal sealed partial class CameraSession
             : Scale(region, sensorArea);
 
         // A Pi 5 takes one crop per output stream; the preview stream gets the same one.
-        var streamCount = CameraConfiguration is { Preview: not null } ? 2 : 1;
+        var streamCount = Configuration is { Preview: not null } ? 2 : 1;
 
         SetControls(controls =>
         {
             if (CropsPerStream(PlatformDetection.Current))
-                controls.Set(LibcameraSharp.Controls.Rpi.ScalerCrops, [.. Enumerable.Repeat(crop, streamCount)]);
+                controls.Set(Controls.Rpi.ScalerCrops, [.. Enumerable.Repeat(crop, streamCount)]);
             else
-                controls.Set(LibcameraSharp.Controls.ScalerCrop, crop);
+                controls.Set(Controls.ScalerCrop, crop);
         });
     }
 
@@ -63,14 +61,14 @@ internal sealed partial class CameraSession
     {
         ArgumentNullException.ThrowIfNull(windows);
 
-        var info = _camera.Controls.TryGet(LibcameraSharp.Controls.ScalerCrop)
+        var info = _camera.Controls.TryGet(Controls.ScalerCrop)
                    ?? throw new InvalidOperationException("This camera does not advertise ScalerCrop, so autofocus windows cannot be placed.");
         var sensorArea = info.Max<Rectangle>();
 
         SetControls(controls =>
         {
-            controls.Set(LibcameraSharp.Controls.AfMetering, AfMetering.Windows);
-            controls.Set(LibcameraSharp.Controls.AfWindows, [.. windows.Select(window => Scale(window, sensorArea))]);
+            controls.Set(Controls.AfMetering, AfMetering.Windows);
+            controls.Set(Controls.AfWindows, [.. windows.Select(window => Scale(window, sensorArea))]);
         });
     }
 
@@ -95,7 +93,7 @@ internal sealed partial class CameraSession
     /// </summary>
     internal ControlsTarget TakeControlsTarget()
     {
-        var sent = ReferenceEquals(Controls, _sentControls) && Controls.Version == _sentVersion;
+        var sent = ReferenceEquals(Pending, _sentControls) && Pending.Version == _sentVersion;
         return new ControlsTarget(_run, sent ? _controlsFrom : _queuedSinceStart);
     }
 
@@ -109,7 +107,7 @@ internal sealed partial class CameraSession
     {
         if (target.Run != _run)
             return true;
-        return request.Metadata.TryGet(LibcameraSharp.Controls.Rpi.ControlListSequence, out var applied)
+        return request.Metadata.TryGet(Controls.Rpi.ControlListSequence, out var applied)
             ? applied >= target.From
             : request.Sequence >= target.From;
     }
@@ -119,19 +117,19 @@ internal sealed partial class CameraSession
     private PendingControls TakeStartControls()
     {
         var initial = _applied.Clone();
-        initial.SetControls(Controls);
+        initial.SetControls(Pending);
         _applied = initial.Clone();
         ForgetTriggers(_applied);
-        Controls = new PendingControls(_camera.Controls);
-        (_queuedSinceStart, _controlsFrom, _sentControls, _sentVersion) = (0, 0, Controls, Controls.Version);
+        Pending = new PendingControls(_camera.Controls);
+        (_queuedSinceStart, _controlsFrom, _sentControls, _sentVersion) = (0, 0, Pending, Pending.Version);
         return initial;
     }
 
     // Triggers act once, when sent (an autofocus scan, a precapture sequence), so a restart doesn't send them again.
     private static void ForgetTriggers(PendingControls applied)
     {
-        applied.Remove(LibcameraSharp.Controls.AfTrigger);
-        applied.Remove(LibcameraSharp.Controls.Draft.AePrecaptureTrigger);
+        applied.Remove(Controls.AfTrigger);
+        applied.Remove(Controls.Draft.AePrecaptureTrigger);
     }
 
     // Hands a request to libcamera with whatever controls changed since the last one; a request that fails to queue
@@ -141,25 +139,25 @@ internal sealed partial class CameraSession
         // The version these controls were sent at, so a waiter can tell whether its change has gone out. A value the camera
         // can't take (one it doesn't advertise, or of the wrong type) is reported and dropped, or it would fail every
         // request after this one too.
-        var version = Controls.Version;
+        var version = Pending.Version;
         try
         {
-            Controls.CopyTo(request.Controls, _camera.Controls);
+            Pending.CopyTo(request.Controls, _camera.Controls);
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"LibcameraSharp: controls the camera couldn't take were dropped: {exception.Message}");
-            Controls.Forget();
+            Pending.Forget();
         }
 
         _camera.QueueRequest(request);
         slot.Queued = true;
 
-        _applied.SetControls(Controls);
+        _applied.SetControls(Pending);
         ForgetTriggers(_applied);
-        Controls.Forget();
-        if (!ReferenceEquals(Controls, _sentControls) || version != _sentVersion)
-            (_controlsFrom, _sentControls, _sentVersion) = (_queuedSinceStart, Controls, version);
+        Pending.Forget();
+        if (!ReferenceEquals(Pending, _sentControls) || version != _sentVersion)
+            (_controlsFrom, _sentControls, _sentVersion) = (_queuedSinceStart, Pending, version);
         _queuedSinceStart++;
     }
 }

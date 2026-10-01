@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
 namespace LibcameraSharp.Tests.Capture;
 
 /// <summary>
@@ -20,7 +17,7 @@ internal sealed class PreparedCamera : IDisposable
     public required ActiveCamera Camera { get; init; }
     public required CameraConfiguration Configuration { get; init; }
     public required StreamConfiguration Config { get; init; }
-    public required Stream Stream { get; init; }
+    public required CameraStream Stream { get; init; }
     public required FrameBufferAllocator Allocator { get; init; }
     public required IReadOnlyList<Request> Requests { get; init; }
 

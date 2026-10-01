@@ -9,7 +9,7 @@ namespace LibcameraSharp;
 /// <remarks>Software H.264 at 1080p30 takes about a core and a half on a Pi 5.</remarks>
 internal sealed unsafe class LibavH264Encoder : LibavEncoder
 {
-    /// <summary>Bits per second. Left null, it is derived from the <see cref="Quality"/> and the frame size.</summary>
+    /// <summary>Bits per second. Left null, it is derived from the <see cref="VideoQuality"/> and the frame size.</summary>
     public long? Bitrate { get; set; }
 
     /// <summary>Frames between keyframes.</summary>
@@ -34,13 +34,13 @@ internal sealed unsafe class LibavH264Encoder : LibavEncoder
     protected override VideoCodec Codec => VideoCodec.H264;
 
     /// <inheritdoc/>
-    protected override void Setup(Quality quality)
+    protected override void Setup(VideoQuality quality)
     {
         if (Bitrate is not null)
             return;
 
         // Mbps at 1080p30, scaled by the square root of how many more or fewer pixels per second this is.
-        var table = new Dictionary<Quality, int> { [Quality.VeryLow] = 3, [Quality.Low] = 4, [Quality.Medium] = 7, [Quality.High] = 10, [Quality.VeryHigh] = 14 };
+        var table = new Dictionary<VideoQuality, int> { [VideoQuality.VeryLow] = 3, [VideoQuality.Low] = 4, [VideoQuality.Medium] = 7, [VideoQuality.High] = 10, [VideoQuality.VeryHigh] = 14 };
         var pixelsPerSecond = (double)Width * Height * FrameRate;
         Bitrate = (long)(table[quality] * 1_000_000 * Math.Sqrt(pixelsPerSecond / ReferencePixelsPerSecond));
     }

@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
 namespace LibcameraSharp;
 
 /// <summary>
@@ -37,7 +34,7 @@ internal sealed class BufferAllocation
     }
 
     /// <summary>Allocates the buffers of every stream and makes one request per buffer, as many as the stream with the fewest buffers has.</summary>
-    public BufferAllocation(ActiveCamera camera, IReadOnlyDictionary<SessionStream, Stream> streams)
+    public BufferAllocation(ActiveCamera camera, IReadOnlyDictionary<SessionStream, CameraStream> streams)
     {
         _allocator = new FrameBufferAllocator(camera);
         foreach (var stream in streams.Values)

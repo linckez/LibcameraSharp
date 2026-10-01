@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 /// <summary>
@@ -39,16 +37,4 @@ internal sealed class StreamDescription
 
     /// <inheritdoc/>
     public override string ToString() => $"{Size?.ToString() ?? "?"}-{Format?.ToString() ?? "?"}" + (Stride is { } s ? $" stride {s}" : "");
-}
-
-/// <summary>Sensor mode request: which bit depth and sensor output size to run the sensor at (Raspberry Pi pipelines).</summary>
-internal sealed class SensorConfiguration
-{
-    /// <summary>Sensor output size, or null to let libcamera choose from the main stream's size.</summary>
-    public Size? OutputSize { get; set; }
-
-    /// <summary>Raw bit depth, or null to let libcamera choose.</summary>
-    public int? BitDepth { get; set; }
-
-    internal SensorConfiguration Clone() => new() { OutputSize = OutputSize, BitDepth = BitDepth };
 }

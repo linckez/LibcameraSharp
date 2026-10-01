@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
@@ -60,7 +58,7 @@ internal sealed partial class CameraSession
         encoder.Height = (int)stream.Size.Value.Height;
         encoder.Stride = stream.Stride!.Value;
         encoder.Format = stream.Format!.Value;
-        encoder.ColourSpace = configuration.ColourSpace;
+        encoder.ColorSpace = configuration.ColorSpace;
         encoder.FrameRate = frameRate;
     }
 

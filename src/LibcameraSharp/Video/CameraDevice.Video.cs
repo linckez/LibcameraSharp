@@ -75,10 +75,10 @@ public partial class CameraDevice
             : options.Streams;
 
         // The colour space follows the size actually recorded, unless the options set one.
-        if (streams.ColourSpace is null)
+        if (streams.ColorSpace is null)
             streams = streams with
             {
-                ColourSpace = CameraSession.VideoColourSpace(streams.CaptureSize ?? CameraSession.DefaultVideoSize, options.Codec == VideoCodec.Mjpeg),
+                ColorSpace = CameraSession.VideoColourSpace(streams.CaptureSize ?? CameraSession.DefaultVideoSize, options.Codec == VideoCodec.Mjpeg),
             };
         var setup = await Session.SetUpAsync(streams, options.Controls, CameraUse.Video).ConfigureAwait(false);
 

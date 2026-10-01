@@ -1,8 +1,6 @@
 using LibcameraSharp.Native.Interop;
 
-using LibcameraSharp.Advanced;
-
-namespace LibcameraSharp;
+namespace LibcameraSharp.Core;
 
 /// <summary>
 /// Memory for one frame, as one or more planes backed by DMA-BUF file descriptors. Get buffers
@@ -72,61 +70,4 @@ public sealed unsafe class FrameBuffer
     public MappedFrameBuffer Map(bool writable = false) => new(this, writable);
 
     internal void Invalidate() => _buffer = null;
-}
-
-/// <summary>One plane of a <see cref="FrameBuffer"/>: a DMA-BUF fd with an offset and length.</summary>
-/// <param name="Fd">File descriptor of the DMA-BUF. Owned by libcamera; don't close it.</param>
-/// <param name="Offset">Byte offset of the plane within the fd, or null when libcamera reports it as not valid.</param>
-/// <param name="Length">Plane size in bytes.</param>
-public readonly record struct FrameBufferPlane(int Fd, long? Offset, long Length);
-
-/// <summary>Result of the capture into a buffer.</summary>
-public enum FrameStatus
-{
-    /// <summary>The frame was captured.</summary>
-    Success = libcamera_frame_metadata_status.LIBCAMERA_FRAME_METADATA_STATUS_SUCCESS,
-    /// <summary>An error occurred; the buffer contents are undefined.</summary>
-    Error = libcamera_frame_metadata_status.LIBCAMERA_FRAME_METADATA_STATUS_ERROR,
-    /// <summary>The request was cancelled before capture.</summary>
-    Cancelled = libcamera_frame_metadata_status.LIBCAMERA_FRAME_METADATA_STATUS_CANCELLED,
-    /// <summary>libcamera hasn't captured into this buffer yet.</summary>
-    Startup = libcamera_frame_metadata_status.LIBCAMERA_FRAME_METADATA_STATUS_STARTUP,
-}
-
-/// <summary>What libcamera recorded about a captured frame (<see cref="FrameBuffer.Metadata"/>).</summary>
-public sealed unsafe class FrameMetadata
-{
-    private readonly libcamera_frame_metadata* _metadata;
-
-    internal FrameMetadata(libcamera_frame_metadata* metadata) => _metadata = metadata;
-
-    /// <summary>Whether the capture succeeded.</summary>
-    public FrameStatus Status => (FrameStatus)NativeMethods.libcamera_frame_metadata_status(_metadata);
-
-    /// <summary>Frame sequence number from the sensor.</summary>
-    public uint Sequence => NativeMethods.libcamera_frame_metadata_sequence(_metadata);
-
-    /// <summary>Capture time on the monotonic clock (<c>CLOCK_MONOTONIC</c>), so only differences between frames are meaningful.</summary>
-    public TimeSpan Timestamp => TimeSpan.FromTicks((long)(NativeMethods.libcamera_frame_metadata_timestamp(_metadata) / TimeSpan.NanosecondsPerTick));
-
-    /// <summary>Bytes actually written to each plane.</summary>
-    public IReadOnlyList<uint> BytesUsed
-    {
-        get
-        {
-            var planes = NativeMethods.libcamera_frame_metadata_planes(_metadata);
-            try
-            {
-                var count = (int)NativeMethods.libcamera_frame_metadata_planes_size(planes);
-                var result = new uint[count];
-                for (var i = 0; i < count; i++)
-                    result[i] = NativeMethods.libcamera_frame_metadata_planes_at(planes, (nuint)i)->bytes_used;
-                return result;
-            }
-            finally
-            {
-                NativeMethods.libcamera_frame_metadata_planes_destroy(planes);
-            }
-        }
-    }
 }

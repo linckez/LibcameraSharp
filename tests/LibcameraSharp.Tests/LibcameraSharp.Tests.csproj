@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="LibcameraSharp.Core" />
   </ItemGroup>
 
   <ItemGroup>

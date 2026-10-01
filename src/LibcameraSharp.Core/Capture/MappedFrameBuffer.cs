@@ -1,9 +1,7 @@
 using System.Buffers;
 using LibcameraSharp.Native;
 
-using LibcameraSharp.Advanced;
-
-namespace LibcameraSharp;
+namespace LibcameraSharp.Core;
 
 /// <summary>
 /// A <see cref="FrameBuffer"/> mapped into memory. Index it by plane to get the bytes; for

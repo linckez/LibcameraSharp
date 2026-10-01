@@ -45,7 +45,7 @@ internal static unsafe class FrameBitmap
         {
             // For YUV, tell FFmpeg the matrix and range the camera encoded with; RGB out is full range.
             var isRgb = (ffmpeg.av_pix_fmt_desc_get(source)->flags & ffmpeg.AV_PIX_FMT_FLAG_RGB) != 0;
-            if (!isRgb && pixels.ColourSpace is { } colourSpace)
+            if (!isRgb && pixels.ColorSpace is { } colourSpace)
             {
                 var source4 = ffmpeg.sws_getCoefficients(Matrix(colourSpace));
                 var coefficients = new int_array4();

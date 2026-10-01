@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
 // Everything here runs on the session's loop.
 
 namespace LibcameraSharp;
@@ -64,10 +61,10 @@ internal sealed partial class CameraSession
     private PendingControls FactoryControls(NoiseReductionMode mode, long[] frameDurationLimits)
     {
         var settings = new PendingControls(_camera.Controls);
-        if (_camera.Controls.Contains(LibcameraSharp.Controls.Draft.NoiseReductionMode) && _camera.Controls.Contains(LibcameraSharp.Controls.FrameDurationLimits))
+        if (_camera.Controls.Contains(Controls.Draft.NoiseReductionMode) && _camera.Controls.Contains(Controls.FrameDurationLimits))
         {
-            settings.Set(LibcameraSharp.Controls.Draft.NoiseReductionMode, mode);
-            settings.Set(LibcameraSharp.Controls.FrameDurationLimits, frameDurationLimits);
+            settings.Set(Controls.Draft.NoiseReductionMode, mode);
+            settings.Set(Controls.FrameDurationLimits, frameDurationLimits);
         }
         return settings;
     }
@@ -78,7 +75,7 @@ internal sealed partial class CameraSession
         captureStream.Align();
         return new SessionConfiguration
         {
-            ColourSpace = colourSpace, BufferCount = bufferCount, Controls = controls,
+            ColorSpace = colourSpace, BufferCount = bufferCount, Controls = controls,
             Capture = captureStream,
             Raw = HasRawSensor ? new StreamDescription(captureStream.Size, SensorFormat) : null,
         };
@@ -96,7 +93,7 @@ internal sealed partial class CameraSession
 
     /// <summary>
     /// Applies <paramref name="cameraConfig"/>: asks libcamera for the streams, lets it adjust them,
-    /// keeps what it chose in <see cref="CameraConfiguration"/>, and allocates buffers.
+    /// keeps what it chose in <see cref="Configuration"/>, and allocates buffers.
     /// </summary>
     /// <exception cref="InvalidOperationException">The camera is running.</exception>
     /// <exception cref="LibcameraException">libcamera rejected the configuration.</exception>
@@ -131,9 +128,9 @@ internal sealed partial class CameraSession
         libcameraConfig.Orientation = config.Transform;
 
         var index = 0;
-        Apply(libcameraConfig[index++], config.Capture, config.BufferCount, ColourSpaceFor(config.ColourSpace, config.Capture.Format!.Value));
+        Apply(libcameraConfig[index++], config.Capture, config.BufferCount, ColourSpaceFor(config.ColorSpace, config.Capture.Format!.Value));
         if (config.Preview is not null)
-            Apply(libcameraConfig[index++], config.Preview, config.BufferCount, config.ColourSpace);
+            Apply(libcameraConfig[index++], config.Preview, config.BufferCount, config.ColorSpace);
         if (config.Raw is not null)
             Apply(libcameraConfig[index], config.Raw, config.BufferCount, ColorSpace.Raw);
 
@@ -147,7 +144,7 @@ internal sealed partial class CameraSession
         _libcameraConfig = libcameraConfig;
 
         // Streams by name, in the order they were added.
-        _streams = new Dictionary<SessionStream, Stream> { [SessionStream.Capture] = libcameraConfig[0].Stream };
+        _streams = new Dictionary<SessionStream, CameraStream> { [SessionStream.Capture] = libcameraConfig[0].Stream };
         index = 1;
         if (config.Preview is not null)
             _streams[SessionStream.Preview] = libcameraConfig[index++].Stream;
@@ -159,9 +156,9 @@ internal sealed partial class CameraSession
 
         _allocation = new BufferAllocation(_camera, _streams);
 
-        CameraConfiguration = config;
-        Controls = new PendingControls(_camera.Controls);
-        Controls.SetControls(config.Controls);
+        Configuration = config;
+        Pending = new PendingControls(_camera.Controls);
+        Pending.SetControls(config.Controls);
         _applied = new PendingControls(_camera.Controls);
         _configureCount++;
 
@@ -171,7 +168,7 @@ internal sealed partial class CameraSession
 
     // Pins the sensor readout by scoring every raw mode against the size and depth wanted; left alone,
     // libcamera guesses from the stream sizes.
-    private void ApplySensorConfiguration(LibcameraSharp.Advanced.CameraConfiguration libcameraConfig, SessionConfiguration config)
+    private void ApplySensorConfiguration(CameraConfiguration libcameraConfig, SessionConfiguration config)
     {
         if (!HasRawSensor || _rawModes.Count == 0)
             return;
@@ -198,7 +195,7 @@ internal sealed partial class CameraSession
         libcameraConfig.SetSensorConfiguration(best.Size, (uint)BitDepth(best.Format));
     }
 
-    private static void Apply(LibcameraSharp.Advanced.StreamConfiguration target, StreamDescription ours, int bufferCount, ColorSpace? colourSpace)
+    private static void Apply(StreamConfiguration target, StreamDescription ours, int bufferCount, ColorSpace? colourSpace)
     {
         target.Size = ours.Size!.Value;
         target.PixelFormat = ours.Format!.Value;
@@ -213,10 +210,10 @@ internal sealed partial class CameraSession
         colourSpace is { } cs && IsRgb(format) ? cs with { YcbcrEncoding = ColorSpace.YcbcrEncodingKind.None, Range = ColorSpace.RangeKind.Full } : colourSpace;
 
     // Writes back what libcamera chose.
-    private static void UpdateCameraConfig(SessionConfiguration config, LibcameraSharp.Advanced.CameraConfiguration libcameraConfig)
+    private static void UpdateCameraConfig(SessionConfiguration config, CameraConfiguration libcameraConfig)
     {
         config.Transform = libcameraConfig.Orientation;
-        config.ColourSpace = ColourSpaceFromLibcamera(libcameraConfig[0].ColorSpace);
+        config.ColorSpace = ColourSpaceFromLibcamera(libcameraConfig[0].ColorSpace);
         var index = 0;
         UpdateStream(config.Capture, libcameraConfig[index++]);
         if (config.Preview is not null)
@@ -225,7 +222,7 @@ internal sealed partial class CameraSession
             UpdateStream(config.Raw, libcameraConfig[index]);
     }
 
-    private static void UpdateStream(StreamDescription ours, LibcameraSharp.Advanced.StreamConfiguration theirs)
+    private static void UpdateStream(StreamDescription ours, StreamConfiguration theirs)
     {
         ours.Format = theirs.PixelFormat;
         ours.Size = theirs.Size;
@@ -276,7 +273,7 @@ internal sealed partial class CameraSession
         _libcameraConfig?.Dispose();
         _libcameraConfig = null;
         _streams = [];
-        CameraConfiguration = null;
+        Configuration = null;
     }
 
     private static bool IsRgb(PixelFormat format) =>

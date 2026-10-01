@@ -1,4 +1,4 @@
-namespace LibcameraSharp;
+namespace LibcameraSharp.Core;
 
 /// <summary>The request that has just completed, for <see cref="ActiveCamera.RequestCompleted"/>.</summary>
 /// <param name="request">The completed request.</param>

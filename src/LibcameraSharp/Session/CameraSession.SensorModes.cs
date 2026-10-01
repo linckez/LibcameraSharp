@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
 namespace LibcameraSharp;
 
 internal sealed partial class CameraSession
@@ -30,7 +27,7 @@ internal sealed partial class CameraSession
                 throw new InvalidOperationException("Stop the recording before probing sensor modes: probing reconfigures the camera.");
             Stop();
 
-            var previous = CameraConfiguration;
+            var previous = Configuration;
             var modes = new List<SensorMode>();
             foreach (var (size, format) in _rawModes)
             {
@@ -42,9 +39,9 @@ internal sealed partial class CameraSession
                 probe.Raw = new StreamDescription(size, format);
                 Configure(probe);
 
-                var durations = _camera.Controls.TryGet(LibcameraSharp.Controls.FrameDurationLimits);
+                var durations = _camera.Controls.TryGet(Controls.FrameDurationLimits);
                 double? fastest = durations is null ? null : Math.Round(1e6 / durations.Min<long>(), 2);   // an array control's bounds are scalars
-                var crop = _camera.Controls.TryGet(LibcameraSharp.Controls.ScalerCrop)?.Max<Rectangle>();
+                var crop = _camera.Controls.TryGet(Controls.ScalerCrop)?.Max<Rectangle>();
 
                 modes.Add(new SensorMode(size, bayer.BitDepth, fastest, crop));
             }

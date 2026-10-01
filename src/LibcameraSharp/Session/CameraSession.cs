@@ -1,6 +1,4 @@
 using System.Threading.Channels;
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
 
 namespace LibcameraSharp;
 
@@ -42,10 +40,10 @@ internal sealed partial class CameraSession : IAsyncDisposable
     private readonly Camera _cameraHandle;
     private readonly ActiveCamera _camera;
     private CameraFacts _facts;
-    private LibcameraSharp.Advanced.CameraConfiguration? _libcameraConfig;
+    private CameraConfiguration? _libcameraConfig;
     private BufferAllocation? _allocation;
     private readonly List<BufferAllocation> _retired = [];      // replaced or closed, but a frame from it is still held
-    private Dictionary<SessionStream, Stream> _streams = [];
+    private Dictionary<SessionStream, CameraStream> _streams = [];
     private int _configureCount;
 
     // Bumped by every stop: frames from an earlier run are told apart by it.
@@ -72,7 +70,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
             // The largest raw mode; cameras without a raw stream fall back to the sensor's size property.
             (SensorResolution, SensorFormat) = SelectNativeMode();
 
-            Controls = new PendingControls(_camera.Controls);
+            Pending = new PendingControls(_camera.Controls);
             _applied = new PendingControls(_camera.Controls);
             _facts = ReadFacts();
         }
@@ -130,7 +128,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
     public int ConfigureCount => _configureCount;
 
     /// <summary>The configuration in effect, with what libcamera chose, or null before <see cref="Configure"/>.</summary>
-    public SessionConfiguration? CameraConfiguration { get; private set; }
+    public SessionConfiguration? Configuration { get; private set; }
 
     /// <summary>Runs <paramref name="onLoop"/> on the loop and hands back what it returns, or what it throws.</summary>
     /// <exception cref="ObjectDisposedException">The camera is closed.</exception>
@@ -252,7 +250,7 @@ internal sealed partial class CameraSession : IAsyncDisposable
     public void Start()
     {
         ThrowIfClosing();
-        if (CameraConfiguration is null || _allocation is null)
+        if (Configuration is null || _allocation is null)
             throw new InvalidOperationException("Configure the camera before starting it.");
         if (Started)
             return;
@@ -457,10 +455,10 @@ internal sealed partial class CameraSession : IAsyncDisposable
         }
         var limits = _camera.Controls.Select(info => new ControlLimits(info.Key, info.MinValue, info.MaxValue, info.DefaultValue)).ToList();
 
-        if (CameraConfiguration is not { } config)
+        if (Configuration is not { } config)
             return new CameraDescription(CameraId, reported, limits);
         return new CameraDescription(CameraId, reported, limits, Configured(config.Capture), Configured(config.Preview), Configured(config.Raw),
-            config.ColourSpace, config.Transform, config.BufferCount);
+            config.ColorSpace, config.Transform, config.BufferCount);
     }
 
     private static ConfiguredStream? Configured(StreamDescription? stream) =>
@@ -468,10 +466,3 @@ internal sealed partial class CameraSession : IAsyncDisposable
             ? new ConfiguredStream(size, format, stream.Stride is 0 ? null : stream.Stride, stream.FrameSize!.Value)   // libcamera's 0 stride: no rows
             : null;
 }
-
-/// <summary>What callers on any thread may know about a camera, published by its session's loop.</summary>
-/// <param name="Capabilities">The controls it advertises in its current configuration, with their ranges.</param>
-/// <param name="Model">The model libcamera reports, or the camera's id when it reports none.</param>
-/// <param name="ActiveArea">The sensor's active pixel area, when the camera reports one.</param>
-/// <param name="Description">What libcamera reports about the camera, for <see cref="CameraDevice.Advanced"/>.</param>
-internal sealed record CameraFacts(CameraCapabilities Capabilities, string Model, Rectangle? ActiveArea, CameraDescription Description);

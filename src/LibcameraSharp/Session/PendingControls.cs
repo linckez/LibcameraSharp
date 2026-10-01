@@ -107,10 +107,10 @@ internal sealed class PendingControls : IEnumerable<KeyValuePair<ControlKey, obj
         if (value is not true)
             return;
         ControlKey[] replaced;
-        if (key.Id == LibcameraSharp.Controls.AeEnable.Id)
-            replaced = [LibcameraSharp.Controls.ExposureTime, LibcameraSharp.Controls.AnalogueGain];
-        else if (key.Id == LibcameraSharp.Controls.AwbEnable.Id)
-            replaced = [LibcameraSharp.Controls.ColourGains];
+        if (key.Id == Controls.AeEnable.Id)
+            replaced = [Controls.ExposureTime, Controls.AnalogueGain];
+        else if (key.Id == Controls.AwbEnable.Id)
+            replaced = [Controls.ColourGains];
         else
             return;
         foreach (var manual in replaced)

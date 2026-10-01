@@ -1,10 +1,7 @@
 using LibcameraSharp.Native;
 using LibcameraSharp.Native.Interop;
 
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
-namespace LibcameraSharp;
+namespace LibcameraSharp.Core;
 
 /// <summary>
 /// Allocates frame buffers from the camera's own memory (DMA-capable, so the ISP can write to them).
@@ -14,7 +11,7 @@ public sealed unsafe class FrameBufferAllocator : IDisposable
 {
     private readonly ActiveCamera _camera;
     private readonly FrameBufferAllocatorHandle _handle;
-    private readonly Dictionary<Stream, List<FrameBuffer>> _streams = [];
+    private readonly Dictionary<CameraStream, List<FrameBuffer>> _streams = [];
 
     /// <param name="camera">The acquired camera to allocate for. Disposing it frees anything this allocator still holds.</param>
     public FrameBufferAllocator(ActiveCamera camera)
@@ -30,7 +27,7 @@ public sealed unsafe class FrameBufferAllocator : IDisposable
     /// </summary>
     /// <exception cref="InvalidOperationException">Buffers were already allocated for the stream.</exception>
     /// <exception cref="LibcameraException">libcamera couldn't allocate, e.g. <c>ENOMEM</c> or an unconfigured stream.</exception>
-    public IReadOnlyList<FrameBuffer> Allocate(Stream stream)
+    public IReadOnlyList<FrameBuffer> Allocate(CameraStream stream)
     {
         if (_streams.ContainsKey(stream))
             throw new InvalidOperationException("Buffers are already allocated for this stream.");
@@ -48,7 +45,7 @@ public sealed unsafe class FrameBufferAllocator : IDisposable
     }
 
     /// <summary>The buffers allocated for <paramref name="stream"/>, or empty when none were.</summary>
-    public IReadOnlyList<FrameBuffer> Buffers(Stream stream) => _streams.GetValueOrDefault(stream) ?? [];
+    public IReadOnlyList<FrameBuffer> Buffers(CameraStream stream) => _streams.GetValueOrDefault(stream) ?? [];
 
     /// <summary>
     /// Frees one stream's buffers, so the stream can be reconfigured and allocated again without
@@ -56,7 +53,7 @@ public sealed unsafe class FrameBufferAllocator : IDisposable
     /// </summary>
     /// <exception cref="InvalidOperationException">The camera is running and still holds one of these buffers.</exception>
     /// <exception cref="LibcameraException">libcamera refused, e.g. <c>EBUSY</c> while the stream is in use.</exception>
-    public void Free(Stream stream)
+    public void Free(CameraStream stream)
     {
         if (!_streams.TryGetValue(stream, out var buffers))
             return;

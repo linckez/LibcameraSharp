@@ -18,7 +18,7 @@ internal sealed unsafe class LibavMjpegEncoder : LibavEncoder
     private const string EncoderName = "mjpeg";
 
     /// <inheritdoc/>
-    protected override void Setup(Quality quality) => _quantiser = QualityToQuantiser(quality);
+    protected override void Setup(VideoQuality quality) => _quantiser = QualityToQuantiser(quality);
 
     /// <inheritdoc/>
     protected override void Started()
@@ -40,12 +40,12 @@ internal sealed unsafe class LibavMjpegEncoder : LibavEncoder
     }
 
     // FFmpeg's quantiser per setting: lower is better quality and bigger frames.
-    private static int QualityToQuantiser(Quality quality) => quality switch
+    private static int QualityToQuantiser(VideoQuality quality) => quality switch
     {
-        Quality.VeryLow => 31,
-        Quality.Low => 15,
-        Quality.Medium => 10,
-        Quality.High => 5,
+        VideoQuality.VeryLow => 31,
+        VideoQuality.Low => 15,
+        VideoQuality.Medium => 10,
+        VideoQuality.High => 5,
         _ => 3,
     };
 }

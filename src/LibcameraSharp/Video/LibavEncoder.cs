@@ -19,7 +19,7 @@ internal abstract unsafe class LibavEncoder : Encoder
     protected abstract VideoCodec Codec { get; }
 
     /// <inheritdoc/>
-    protected override VideoStreamInfo StreamInfo => new(Codec, Width, Height, FrameRate, _extraData, ColourSpace);
+    protected override VideoStreamInfo StreamInfo => new(Codec, Width, Height, FrameRate, _extraData, ColorSpace);
 
     /// <summary>Sets the codec's own options on the context before it opens.</summary>
     protected virtual void Configure(AVCodecContext* context, bool hardware)
@@ -50,7 +50,7 @@ internal abstract unsafe class LibavEncoder : Encoder
             _context->flags |= ffmpeg.AV_CODEC_FLAG_GLOBAL_HEADER;
 
         // Tag the stream with the camera's colour space, so players don't have to guess it.
-        if (ColourSpace is { } colourSpace)
+        if (ColorSpace is { } colourSpace)
         {
             _context->color_primaries = LibavColourTags.Primaries(colourSpace);
             _context->color_trc = LibavColourTags.Transfer(colourSpace);

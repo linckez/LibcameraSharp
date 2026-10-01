@@ -1,4 +1,3 @@
-
 using System.Threading.Channels;
 
 namespace LibcameraSharp;
@@ -45,14 +44,14 @@ internal abstract class Encoder
     public PixelFormat Format { get; set; }
 
     /// <summary>The colour space the camera delivers, for encoders that tag their output. Set from the camera configuration.</summary>
-    public ColorSpace? ColourSpace { get; set; }
+    public ColorSpace? ColorSpace { get; set; }
 
     /// <summary>
     /// Prepares the encoder and opens its outputs. <paramref name="quality"/> applies only when the
     /// encoder has no explicit bitrate set.
     /// </summary>
     /// <exception cref="InvalidOperationException">Already running, or there is no output.</exception>
-    public void Start(Quality quality)
+    public void Start(VideoQuality quality)
     {
         if (Running)
             throw new InvalidOperationException("The encoder is already running.");
@@ -173,7 +172,7 @@ internal abstract class Encoder
     protected abstract VideoStreamInfo StreamInfo { get; }
 
     /// <summary>Applies <paramref name="quality"/> to the encoder's own settings before it starts.</summary>
-    protected virtual void Setup(Quality quality)
+    protected virtual void Setup(VideoQuality quality)
     {
     }
 

@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
 namespace LibcameraSharp;
 
 /// <summary>
@@ -18,7 +15,7 @@ internal sealed class CapturedFrame : IDisposable
     private readonly BufferAllocation _allocation;
     private Request? _request;
 
-    internal CapturedFrame(CameraSession camera, Request request, SessionConfiguration config, IReadOnlyDictionary<SessionStream, Stream> streams, int run, BufferAllocation allocation)
+    internal CapturedFrame(CameraSession camera, Request request, SessionConfiguration config, IReadOnlyDictionary<SessionStream, CameraStream> streams, int run, BufferAllocation allocation)
     {
         _camera = camera;
         _request = request;
@@ -32,7 +29,7 @@ internal sealed class CapturedFrame : IDisposable
     public SessionConfiguration Config { get; }
 
     /// <summary>The libcamera stream behind each configured stream.</summary>
-    public IReadOnlyDictionary<SessionStream, Stream> Streams { get; }
+    public IReadOnlyDictionary<SessionStream, CameraStream> Streams { get; }
 
     /// <summary>The underlying libcamera request, for the lower-level API.</summary>
     /// <exception cref="ObjectDisposedException">The frame has been disposed, or the camera closed, which freed its buffer.</exception>
@@ -63,7 +60,7 @@ internal sealed class CapturedFrame : IDisposable
     public FramePixels CopyPixels(SessionStream stream = SessionStream.Capture)
     {
         var config = Config[stream] ?? throw new ArgumentException($"The {stream} stream is not configured.", nameof(stream));
-        return new FramePixels(MakeBuffer(stream), config.Format!.Value, config.Size!.Value, (int)config.Stride!.Value, Config.ColourSpace);
+        return new FramePixels(MakeBuffer(stream), config.Format!.Value, config.Size!.Value, (int)config.Stride!.Value, Config.ColorSpace);
     }
 
     /// <summary>What the camera reported for this frame, keyed by control; a snapshot you can keep after disposing the request.</summary>
@@ -80,6 +77,6 @@ internal sealed class CapturedFrame : IDisposable
             _camera.Release(request, _allocation);
     }
 
-    private Stream StreamFor(SessionStream stream) =>
+    private CameraStream StreamFor(SessionStream stream) =>
         Streams.TryGetValue(stream, out var found) ? found : throw new ArgumentException($"The {stream} stream is not configured.", nameof(stream));
 }

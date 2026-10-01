@@ -16,11 +16,11 @@ public class LogTests
             File.WriteAllText(path, "");
 
             // At ERROR nothing from a normal start should appear; at INFO the version banner does.
-            LibcameraLog.SetLevel(LogLevel.Error);
+            LibcameraLog.SetLevel(LibcameraLogLevel.Error);
             using (new CameraManager()) { }
             var quiet = File.ReadAllText(path);
 
-            LibcameraLog.SetLevel(LogLevel.Info);
+            LibcameraLog.SetLevel(LibcameraLogLevel.Info);
             using (new CameraManager()) { }
             var chatty = File.ReadAllText(path);
 
@@ -31,7 +31,7 @@ public class LogTests
         finally
         {
             LibcameraLog.SetStream();
-            LibcameraLog.SetLevel(LogLevel.Info);
+            LibcameraLog.SetLevel(LibcameraLogLevel.Info);
             File.Delete(path);
         }
     }

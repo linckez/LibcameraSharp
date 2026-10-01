@@ -1,6 +1,3 @@
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // every Stream in this file is libcamera's
-
 namespace LibcameraSharp.Tests.Compliance;
 
 /// <summary>
@@ -33,7 +30,7 @@ public class LifetimeContractTests(ITestOutputHelper output)
     }
 
     // The CameraConfiguration goes out of scope here; only the Stream is returned.
-    private static Stream ConfigureAndLeak(ActiveCamera camera)
+    private static CameraStream ConfigureAndLeak(ActiveCamera camera)
     {
         var configuration = camera.GenerateConfiguration(StreamRole.ViewFinder)!;
         Assert.NotEqual(ConfigurationStatus.Invalid, configuration.Validate());
@@ -67,7 +64,7 @@ public class LifetimeContractTests(ITestOutputHelper output)
         Assert.Throws<ObjectDisposedException>(() => buffer.Map());
     }
 
-    private static (FrameBuffer Buffer, WeakReference<FrameBufferAllocator> Allocator) AllocateAndDropTheReference(ActiveCamera camera, Stream stream)
+    private static (FrameBuffer Buffer, WeakReference<FrameBufferAllocator> Allocator) AllocateAndDropTheReference(ActiveCamera camera, CameraStream stream)
     {
         var allocator = new FrameBufferAllocator(camera);
         return (allocator.Allocate(stream)[0], new WeakReference<FrameBufferAllocator>(allocator));

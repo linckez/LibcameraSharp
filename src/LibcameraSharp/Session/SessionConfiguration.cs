@@ -1,5 +1,3 @@
-using LibcameraSharp.Advanced;
-
 namespace LibcameraSharp;
 
 /// <summary>
@@ -9,7 +7,7 @@ namespace LibcameraSharp;
 /// <see cref="CameraSession.CreateStillConfiguration"/> or <see cref="CameraSession.CreateVideoConfiguration"/>,
 /// adjust it, and pass it to <see cref="CameraSession.Configure(SessionConfiguration)"/>.
 /// </summary>
-/// <remarks>Not libcamera's <see cref="LibcameraSharp.Advanced.CameraConfiguration"/>; <c>Configure</c> builds that from this.</remarks>
+/// <remarks>Not libcamera's <see cref="CameraConfiguration"/>; <c>Configure</c> builds that from this.</remarks>
 internal sealed class SessionConfiguration
 {
     /// <summary>Buffers per stream; each use's factory sets it.</summary>
@@ -19,7 +17,7 @@ internal sealed class SessionConfiguration
     public Orientation Transform { get; set; } = Orientation.Rotate0;
 
     /// <summary>Colour space for the main stream, or null to let libcamera choose, as video does.</summary>
-    public ColorSpace? ColourSpace { get; set; }
+    public ColorSpace? ColorSpace { get; set; }
 
     /// <summary>Controls applied when the camera starts with this configuration.</summary>
     public PendingControls Controls { get; set; } = new();
@@ -34,7 +32,7 @@ internal sealed class SessionConfiguration
     public StreamDescription? Raw { get; set; }
 
     /// <summary>Sensor mode hints for Raspberry Pi pipelines.</summary>
-    public SensorConfiguration Sensor { get; set; } = new();
+    public ConfiguredSensor Sensor { get; set; } = new();
 
     /// <summary>Adds (or removes) a raw stream; its size and format are filled in from the sensor at configure time.</summary>
     public void EnableRaw(bool on = true) => Raw = on ? new StreamDescription() : null;
@@ -49,7 +47,7 @@ internal sealed class SessionConfiguration
 
     internal SessionConfiguration Clone() => new()
     {
-        BufferCount = BufferCount, Transform = Transform, ColourSpace = ColourSpace,
+        BufferCount = BufferCount, Transform = Transform, ColorSpace = ColorSpace,
         Controls = Controls.Clone(), Capture = Capture.Clone(), Preview = Preview?.Clone(), Raw = Raw?.Clone(),
         Sensor = Sensor.Clone(),
     };

@@ -136,7 +136,7 @@ internal sealed unsafe class ContainerOutput : Output
         parameters->width = stream.Width;
         parameters->height = stream.Height;
         parameters->format = (int)AVPixelFormat.AV_PIX_FMT_YUV420P;
-        if (stream.ColourSpace is { } colourSpace)
+        if (stream.ColorSpace is { } colourSpace)
         {
             parameters->color_primaries = LibavColourTags.Primaries(colourSpace);
             parameters->color_trc = LibavColourTags.Transfer(colourSpace);

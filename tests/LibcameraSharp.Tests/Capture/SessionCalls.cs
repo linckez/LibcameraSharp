@@ -18,9 +18,9 @@ internal static class SessionCalls
         public Task StopAsync() => session.CallAsync(() => session.Stop());
 
         /// <summary>Records the configured camera into <paramref name="output"/> with <paramref name="encoder"/>; attaching starts the camera.</summary>
-        public async Task StartRecordingAsync(Encoder encoder, Output output, Quality quality = Quality.Medium)
+        public async Task StartRecordingAsync(Encoder encoder, Output output, VideoQuality quality = VideoQuality.Medium)
         {
-            var (configuration, frameRate) = await session.CallAsync(() => (session.CameraConfiguration!, session.NominalFrameRate()));
+            var (configuration, frameRate) = await session.CallAsync(() => (session.Configuration!, session.NominalFrameRate()));
             CameraSession.PrepareEncoder(encoder, configuration, frameRate);
             encoder.Output = output;
             encoder.Start(quality);

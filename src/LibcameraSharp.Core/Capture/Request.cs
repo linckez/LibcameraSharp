@@ -1,21 +1,7 @@
 using LibcameraSharp.Native;
 using LibcameraSharp.Native.Interop;
 
-using LibcameraSharp.Advanced;
-using Stream = LibcameraSharp.Advanced.Stream;   // libcamera's stream, not System.IO's
-
-namespace LibcameraSharp;
-
-/// <summary>Where a request is in its life cycle.</summary>
-public enum RequestStatus
-{
-    /// <summary>Created or queued, not yet completed.</summary>
-    Pending = libcamera_request_status.LIBCAMERA_REQUEST_STATUS_PENDING,
-    /// <summary>Completed; buffers hold frames and <see cref="Request.Metadata"/> is filled.</summary>
-    Complete = libcamera_request_status.LIBCAMERA_REQUEST_STATUS_COMPLETE,
-    /// <summary>Cancelled by <see cref="ActiveCamera.Stop"/> before completing.</summary>
-    Cancelled = libcamera_request_status.LIBCAMERA_REQUEST_STATUS_CANCELLED,
-}
+namespace LibcameraSharp.Core;
 
 /// <summary>
 /// One capture: a buffer per stream plus the controls to apply. Fill it, queue it with
@@ -25,7 +11,7 @@ public enum RequestStatus
 public sealed unsafe class Request : IDisposable
 {
     private readonly RequestHandle _handle;
-    private readonly Dictionary<Stream, FrameBuffer> _buffers = [];
+    private readonly Dictionary<CameraStream, FrameBuffer> _buffers = [];
     private volatile bool _queued;
     private volatile bool _disposeWhenCompleted;
 
@@ -52,11 +38,11 @@ public sealed unsafe class Request : IDisposable
     public bool IsQueued => _queued;
 
     /// <summary>Streams that have a buffer attached, with their buffers.</summary>
-    public IReadOnlyDictionary<Stream, FrameBuffer> Buffers => _buffers;
+    public IReadOnlyDictionary<CameraStream, FrameBuffer> Buffers => _buffers;
 
     /// <summary>Attaches a buffer to receive <paramref name="stream"/>'s frame. One buffer per stream.</summary>
     /// <exception cref="LibcameraException"><c>EEXIST</c> when the stream already has a buffer.</exception>
-    public void AddBuffer(Stream stream, FrameBuffer buffer)
+    public void AddBuffer(CameraStream stream, FrameBuffer buffer)
     {
         LibcameraException.ThrowIfError(NativeMethods.libcamera_request_add_buffer(Pointer, stream.Pointer, buffer.Pointer), "add buffer to request");
         _buffers[stream] = buffer;
@@ -64,7 +50,7 @@ public sealed unsafe class Request : IDisposable
 
     /// <summary>The buffer attached for <paramref name="stream"/>.</summary>
     /// <exception cref="KeyNotFoundException">No buffer was added for that stream.</exception>
-    public FrameBuffer Buffer(Stream stream) => _buffers[stream];
+    public FrameBuffer Buffer(CameraStream stream) => _buffers[stream];
 
     /// <summary>
     /// Resets the request so it can be queued again. Buffers stay attached when

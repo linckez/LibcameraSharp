@@ -8,12 +8,13 @@
 // stream) DNG; then takes a second JPEG with the exposure locked to what the first one used.
 
 using LibcameraSharp;
+using LibcameraSharp.Core;   // libcamera's own classes; here only for CameraManager.Version
 
 var cameraNumber = args.Length > 0 ? int.Parse(args[0]) : 0;
 var outDir = Path.GetFullPath(args.Length > 1 ? args[1] : "photos");
 Directory.CreateDirectory(outDir);
 
-LibcameraLog.SetLevel(LogLevel.Error);                        // libcamera's own chatter off from here on
+LibcameraLog.SetLevel(LibcameraLogLevel.Error);               // libcamera's own chatter off from here on
 Console.WriteLine($"libcamera {CameraManager.Version}");
 
 // 1. Who's there.

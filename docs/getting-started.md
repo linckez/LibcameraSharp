@@ -64,7 +64,7 @@ Everything else — encoding, JPEG quality, EXIF — only shapes the file.
 libcamera logs to stderr. In a service:
 
 ```csharp
-LibcameraLog.SetLevel(LogLevel.Error);         // errors only, from here on
+LibcameraLog.SetLevel(LibcameraLogLevel.Error);    // errors only, from here on
 ```
 
 ## Cleaning up

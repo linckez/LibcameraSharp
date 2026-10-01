@@ -49,7 +49,7 @@ static class Champions
             Streams = new StreamSettings { CaptureSize = new Size(1920, 1080) },
             Controls = new CameraControls { FrameRate = 30 },
             Codec = VideoCodec.H264,
-            Quality = Quality.High,
+            Quality = VideoQuality.High,
             KeyframeInterval = 60,                                   // frames
         };
 

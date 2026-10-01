@@ -57,7 +57,7 @@ internal sealed partial class CameraSession
     }, _ => { }));
 
     /// <summary>True for a camera with a lens that autofocus can move.</summary>
-    public bool CanFocus => Facts.Capabilities.Supports(LibcameraSharp.Controls.AfMode);
+    public bool CanFocus => Facts.Capabilities.Supports(Controls.AfMode);
 
     private SetUpResult SetUp(StreamSettings streams, CameraControls controls, CameraUse use, object? reader)
     {
@@ -72,7 +72,7 @@ internal sealed partial class CameraSession
         ApplyOptions(streams, controls, use);
         if (!Started)
             Start();
-        return new SetUpResult(TakeControlsTarget(), CameraConfiguration!, NominalFrameRate());
+        return new SetUpResult(TakeControlsTarget(), Configuration!, NominalFrameRate());
     }
 
     // Puts the camera into the shape the options describe, and does nothing when it is already in it.
@@ -82,7 +82,7 @@ internal sealed partial class CameraSession
 
         // Compare with what was asked for, not the live configuration: libcamera adjusts what it cannot honour, so
         // the two never match and comparing them would reconfigure on every call.
-        if (_appliedUse == use && _appliedStreams == streams && CameraConfiguration is not null && _configureCount == _appliedAt)
+        if (_appliedUse == use && _appliedStreams == streams && Configuration is not null && _configureCount == _appliedAt)
         {
             // The same controls as the last call are already in effect; anything else goes out once.
             if (controls == _appliedControls)
@@ -113,20 +113,20 @@ internal sealed partial class CameraSession
     // that can't crop, or has no autofocus windows, skips them.
     private void ApplyGeometry(CameraControls controls)
     {
-        var canCrop = _camera.Controls.Contains(LibcameraSharp.Controls.ScalerCrop);
+        var canCrop = _camera.Controls.Contains(Controls.ScalerCrop);
         if (controls.Zoom is { } zoom)
         {
             if (canCrop)
                 SetZoom(zoom);
             else
-                WarnSkipped([LibcameraSharp.Controls.ScalerCrop.Name]);
+                WarnSkipped([Controls.ScalerCrop.Name]);
         }
         if (controls.AutofocusWindows is { Count: > 0 } windows)
         {
-            if (canCrop && _camera.Controls.Contains(LibcameraSharp.Controls.AfWindows))
+            if (canCrop && _camera.Controls.Contains(Controls.AfWindows))
                 SetAutofocusWindows(windows);
             else
-                WarnSkipped([LibcameraSharp.Controls.AfWindows.Name]);
+                WarnSkipped([Controls.AfWindows.Name]);
         }
     }
 
@@ -151,22 +151,8 @@ internal sealed partial class CameraSession
     // A nominal frame rate, for encoders that must state one: the camera's fastest, at most 30 fps.
     internal double NominalFrameRate()
     {
-        if (_camera.Controls.TryGet(LibcameraSharp.Controls.FrameDurationLimits) is not { } limits)
+        if (_camera.Controls.TryGet(Controls.FrameDurationLimits) is not { } limits)
             return VideoOptions.DefaultFrameRate;
         return 1_000_000.0 / Math.Max(limits.Min<long>(), VideoFrameDuration);
     }
-}
-
-/// <summary>What a setup gives the call that asked for it.</summary>
-/// <param name="Target">Which frames carry the call's controls.</param>
-/// <param name="Configuration">The configuration now in effect, with what libcamera chose.</param>
-/// <param name="FrameRate">A nominal frame rate for an encoder that must state one.</param>
-internal readonly record struct SetUpResult(ControlsTarget Target, SessionConfiguration Configuration, double FrameRate);
-
-/// <summary>What the camera is being set up for; each starts from its own defaults.</summary>
-internal enum CameraUse
-{
-    Photo,
-    Video,
-    Frames,
 }
