@@ -39,7 +39,7 @@ concurrency:
 jobs:
   test:
     name: .NET Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm   # native arm64: the Pi OS container runs without emulation
     steps:
       - name: Checkout Code 📥
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -50,11 +50,6 @@ jobs:
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5
         with:
           dotnet-version: 10.x
-
-      - name: Setup QEMU for arm64 🖥️
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
-        with:
-          platforms: arm64
 
       - name: Verify against Raspberry Pi OS libcamera 🐞
         shell: bash
