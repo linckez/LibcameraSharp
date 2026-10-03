@@ -40,9 +40,7 @@ public partial class CameraDevice
     /// <param name="options">The photo to focus for; the default photo settings when null.</param>
     /// <param name="cancellationToken">Cancels the wait for the scan.</param>
     /// <returns>Whether the scan ended focused, and the frame it ended on.</returns>
-    /// <exception cref="InvalidOperationException">
-    /// On a camera with autofocus, a recording or another frame loop holds the camera with other options.
-    /// </exception>
+    /// <exception cref="InvalidOperationException">On a camera with autofocus, a recording is running: the scan would reconfigure the camera under it.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
     /// <exception cref="ObjectDisposedException">The camera has been disposed.</exception>
     public virtual Task<FocusResult> FocusAsync(PhotoOptions? options = null, CancellationToken cancellationToken = default)
