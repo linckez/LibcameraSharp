@@ -36,6 +36,7 @@ public sealed class Photo
     /// The photo is encoded before the file is opened, so a photo that can't be encoded leaves no file. A save cancelled
     /// partway through writing leaves a partial one.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">The EXIF data is longer than a JPEG can hold (64 KB); shorten its text.</exception>
     public async Task SaveAsync(string path, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
@@ -55,6 +56,7 @@ public sealed class Photo
     /// The photo is encoded in memory first, then written with the stream's asynchronous writes, so a stream that refuses
     /// synchronous writes, as ASP.NET Core's response body does, takes it.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">The EXIF data is longer than a JPEG can hold (64 KB); shorten its text.</exception>
     public async Task SaveAsync(Stream output, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(output);

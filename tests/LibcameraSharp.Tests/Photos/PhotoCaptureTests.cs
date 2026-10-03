@@ -72,4 +72,17 @@ public class PhotoCaptureTests : IDisposable
 
         Assert.Equal(afterFirst, camera.Session.ConfigureCount);
     }
+
+    [Fact]
+    public async Task Focusing_a_camera_without_autofocus_reports_it_not_focused()
+    {
+        Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        await using var camera = CameraDevice.Open();
+        Assert.SkipWhen(camera.Capabilities.Supports(Controls.AfMode), "this camera has autofocus");
+
+        var result = await camera.FocusAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsFocused);
+        Assert.Null(result.Metadata);
+    }
 }

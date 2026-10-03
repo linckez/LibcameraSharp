@@ -14,6 +14,16 @@ On a camera with autofocus, each photo focuses first, then shoots — even if fo
 does. To skip the scan, give the photo a focus of your own, such as
 `FocusMode.AtDioptres(photo.Metadata.LensPosition!.Value)` to keep the last one.
 
+To focus once and keep it, as a focus button does, run the same scan on its own and see how it ended:
+
+```csharp
+FocusResult focus = await camera.FocusAsync(options, ct);
+if (focus.IsFocused)
+    options = options with { Controls = options.Controls with { Focus = FocusMode.AtDioptres(focus.Metadata!.LensPosition!.Value) } };
+```
+
+A camera without autofocus has nothing to scan: you get a warning and a result that isn't focused.
+
 ## Encodings
 
 `PhotoOptions.Encoding` decides how the photo is written, and it is chosen before the photo is taken:

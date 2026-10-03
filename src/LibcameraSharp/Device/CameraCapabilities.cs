@@ -6,7 +6,8 @@ namespace LibcameraSharp;
 /// </summary>
 /// <remarks>
 /// Check here before relying on a control: a setting this camera does not advertise is skipped, with one
-/// warning. Ranges follow the current configuration, so they can change with the sensor mode.
+/// warning. Ranges follow the current configuration, so they can change with the sensor mode; before the camera is
+/// first set up, libcamera reports placeholders, so read them after the first photo or frame.
 /// </remarks>
 public sealed class CameraCapabilities
 {
@@ -58,6 +59,56 @@ public sealed class CameraCapabilities
         return (Read(info, Bound.Min), Read(info, Bound.Max),
                 info.HasDefault && !info.Key.IsArray ? Read(info, Bound.Default) : null);
     }
+
+    /// <summary>
+    /// The exposure times <see cref="CameraControls.Exposure"/> can fix, from libcamera's <c>ExposureTime</c> (whole
+    /// microseconds); null when the camera has no exposure control. The longest is also capped by the frame rate in effect.
+    /// </summary>
+    public (TimeSpan Min, TimeSpan Max, TimeSpan? Default)? Exposure =>
+        Range(LibcameraSharp.Controls.ExposureTime) is var (min, max, @default)
+            ? (TimeSpan.FromMicroseconds(min), TimeSpan.FromMicroseconds(max), Microseconds(@default))
+            : null;
+
+    private static TimeSpan? Microseconds(double? value) => value is { } microseconds ? TimeSpan.FromMicroseconds(microseconds) : null;
+
+    /// <summary>The analogue gains <see cref="CameraControls.Gain"/> can fix; null when the camera has no gain control.</summary>
+    public (float Min, float Max, float? Default)? Gain => AsFloat(Range(LibcameraSharp.Controls.AnalogueGain));
+
+    /// <summary>
+    /// The lens positions <see cref="CameraControls.Focus"/> can hold, in dioptres (0 is infinity), from libcamera's
+    /// <c>LensPosition</c>; null when the camera has no lens to move.
+    /// </summary>
+    public (float Min, float Max, float? Default)? Focus => AsFloat(Range(LibcameraSharp.Controls.LensPosition));
+
+    /// <summary>
+    /// The frame rates <see cref="CameraControls.FrameRate"/> can ask for, in frames a second, from libcamera's
+    /// <c>FrameDurationLimits</c>: the slowest is one frame in the longest duration, the fastest one in the shortest.
+    /// It has no default. Null when the camera has no frame-duration control.
+    /// </summary>
+    public (double Min, double Max, double? Default)? FrameRate =>
+        Range(LibcameraSharp.Controls.FrameDurationLimits) is var (shortest, longest, _) && shortest > 0 && longest > 0
+            ? (MicrosecondsPerSecond / longest, MicrosecondsPerSecond / shortest, null)
+            : null;
+
+    /// <summary>The values <see cref="CameraControls.Brightness"/> takes; null when the camera lacks the control.</summary>
+    public (float Min, float Max, float? Default)? Brightness => AsFloat(Range(LibcameraSharp.Controls.Brightness));
+
+    /// <summary>The values <see cref="CameraControls.Contrast"/> takes; null when the camera lacks the control.</summary>
+    public (float Min, float Max, float? Default)? Contrast => AsFloat(Range(LibcameraSharp.Controls.Contrast));
+
+    /// <summary>The values <see cref="CameraControls.Saturation"/> takes; null when the camera lacks the control.</summary>
+    public (float Min, float Max, float? Default)? Saturation => AsFloat(Range(LibcameraSharp.Controls.Saturation));
+
+    /// <summary>The values <see cref="CameraControls.Sharpness"/> takes; null when the camera lacks the control.</summary>
+    public (float Min, float Max, float? Default)? Sharpness => AsFloat(Range(LibcameraSharp.Controls.Sharpness));
+
+    /// <summary>The values <see cref="CameraControls.ExposureValue"/> takes, in stops; null when the camera lacks the control.</summary>
+    public (float Min, float Max, float? Default)? ExposureValue => AsFloat(Range(LibcameraSharp.Controls.ExposureValue));
+
+    private const double MicrosecondsPerSecond = 1_000_000;
+
+    private static (float Min, float Max, float? Default)? AsFloat((double Min, double Max, double? Default)? range) =>
+        range is var (min, max, @default) ? ((float)min, (float)max, (float?)@default) : null;
 
     private ControlInfo? Find(ControlKey control) =>
         _advertised!.FirstOrDefault(info => info.Key.Id == control.Id);

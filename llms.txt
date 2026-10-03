@@ -33,7 +33,8 @@ Things an assistant gets wrong without being told:
 - `frame.ToJpeg(quality = 50)` encodes a frame as a JPEG (no EXIF) for a live view; call it before disposing the frame.
 - `BGR888` is stored R, G, B in memory (libcamera names read backwards).
 - One process holds a camera at a time; a second gets `CameraBusyException`.
-- On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that.
+- On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that. `camera.FocusAsync(options)` runs that scan on its own and returns `IsFocused` and the frame it ended on; keep it with `FocusMode.AtDioptres(result.Metadata!.LensPosition!.Value)`.
+- `camera.Capabilities.Exposure`, `.Gain`, `.Focus`, `.FrameRate` and the rest give each setting's range in `CameraControls` units.
 - Without a camera (tests, a laptop): derive from `CameraDevice` (protected constructor, virtual members) and build return values with `LibcameraSharpModelFactory`.
 
 ## Docs

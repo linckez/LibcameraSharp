@@ -3,7 +3,7 @@ namespace LibcameraSharp.Tests.SensorModes;
 
 /// <summary>
 /// Mode scoring, which decides which sensor readout a size-only configuration gets. The expected
-/// picks and scores were produced by picamera2's <c>score_mode</c> over the IMX477's real modes, so
+/// picks and scores were produced by another implementation's scoring over the IMX477's real modes, so
 /// they are an independent answer, not our own. Needs no camera.
 /// </summary>
 public class ScoreModeTests

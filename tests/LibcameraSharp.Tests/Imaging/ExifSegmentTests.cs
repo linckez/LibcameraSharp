@@ -103,4 +103,15 @@ public class ExifSegmentTests
         Assert.Empty(ExifSegment.Build(new Metadata(list), "cam"));
         Assert.NotEmpty(ExifSegment.Build(new Metadata(list), "cam", new ExifData { Artist = "me" }));
     }
+
+    [Fact]
+    public async Task Exif_too_long_for_a_jpeg_is_refused_rather_than_written_corrupt()
+    {
+        Assert.SkipUnless(Libexif.IsAvailable, "libexif isn't installed, so no EXIF is written at all");
+        var photo = LibcameraSharpModelFactory.Photo(new byte[4 * 4 * 4], new Size(4, 4),
+            options: new PhotoOptions { Exif = new ExifData { UserComment = new string('x', 70_000) } });
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => photo.SaveAsync(Stream.Null, TestContext.Current.CancellationToken));
+        Assert.Contains("a JPEG holds at most", refused.Message);
+    }
 }
