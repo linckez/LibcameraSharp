@@ -4,7 +4,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <RuntimeIdentifiers>linux-arm64;linux-x64</RuntimeIdentifiers>
-    <Version>10.1.0</Version>
+    <Version>10.2.0</Version>
     <RootNamespace>LibcameraSharp</RootNamespace>
   </PropertyGroup>
 

@@ -149,6 +149,11 @@ public static class LibcameraSharpModelFactory
         return new VideoFrame([.. planes], rowBytes, size, chosen, sequence, metadata ?? CaptureMetadata());
     }
 
+    /// <summary>Creates a <see cref="LibcameraSharp.FocusResult"/>, what a fake camera's <see cref="CameraDevice.FocusAsync(PhotoOptions?, CancellationToken)"/> returns.</summary>
+    /// <param name="isFocused">True when the scan ended focused.</param>
+    /// <param name="metadata">The frame the scan ended on, with its lens position; null for a camera without autofocus.</param>
+    public static FocusResult FocusResult(bool isFocused, CaptureMetadata? metadata = null) => new(isFocused, metadata);
+
     /// <summary>Creates <see cref="LibcameraSharp.CameraCapabilities"/> for tests and fakes.</summary>
     /// <param name="controls">
     /// The controls the camera advertises, in order, each with its range; a null range for a control whose

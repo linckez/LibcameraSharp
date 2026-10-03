@@ -48,9 +48,13 @@ follow change a few frames later.
 ## What this camera can do
 
 ```csharp
-if (camera.Capabilities.Range(Controls.AnalogueGain) is { } gain)
-    Console.WriteLine($"gain {gain.Min}–{gain.Max}x");
+if (camera.Capabilities.Exposure is { } exposure)
+    Console.WriteLine($"exposure {exposure.Min.TotalMilliseconds}–{exposure.Max.TotalMilliseconds} ms");
 ```
+
+`Exposure`, `Gain`, `Focus` (dioptres), `FrameRate` (frames a second), `Brightness`, `Contrast`,
+`Saturation`, `Sharpness` and `ExposureValue` give each setting's range in the units `CameraControls` takes
+it in. `Range(Controls.AnalogueGain)` gives any libcamera control's, in libcamera's own units.
 
 Ask before you rely on a control. A setting the camera doesn't have is skipped, with one warning on
 standard error, rather than throwing; ranges depend on the sensor mode, so they are only meaningful once a call has set the camera up.

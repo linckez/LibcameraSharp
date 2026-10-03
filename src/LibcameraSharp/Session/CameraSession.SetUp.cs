@@ -84,8 +84,9 @@ internal sealed partial class CameraSession
         // the two never match and comparing them would reconfigure on every call.
         if (_appliedUse == use && _appliedStreams == streams && Configuration is not null && _configureCount == _appliedAt)
         {
-            // The same controls as the last call are already in effect; anything else goes out once.
-            if (controls == _appliedControls)
+            // The same controls as the last call are already in effect; anything else goes out once. A focus that starts
+            // a scan is an action, not a state, so it goes out every time it's asked for.
+            if (controls == _appliedControls && controls.Focus is not { Mode: AfMode.Auto, CancelsScan: false })
                 return;
             var pending = new PendingControls(_camera.Controls);
             WarnSkipped(controls.ApplyTo(pending));

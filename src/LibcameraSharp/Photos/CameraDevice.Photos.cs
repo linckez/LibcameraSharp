@@ -21,6 +21,47 @@ public partial class CameraDevice
         return RunExclusiveAsync(() => TakePhotoAsync(options, cancellationToken), cancellationToken);
     }
 
+    /// <summary>
+    /// Runs one autofocus scan for a photo with these options, the scan <see cref="CapturePhotoAsync"/> runs before a
+    /// photo whose options leave <see cref="CameraControls.Focus"/> unset, and reports how it ended.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The scan runs in a viewfinder setup shaped like the photo, so the next photo reconfigures. To take photos at the
+    /// focus it found, pass its lens position, <c>FocusMode.AtDioptres(result.Metadata!.LensPosition!.Value)</c>; a photo
+    /// with <c>Focus</c> unset scans again.
+    /// </para>
+    /// <para>The scan is always automatic: the options' <see cref="CameraControls.Focus"/> is ignored.</para>
+    /// <para>
+    /// On a camera without autofocus there is nothing to scan: a warning (once), and a result that isn't focused. Check
+    /// <c>Capabilities.Supports(Controls.AfMode)</c> to know beforehand.
+    /// </para>
+    /// </remarks>
+    /// <param name="options">The photo to focus for; the default photo settings when null.</param>
+    /// <param name="cancellationToken">Cancels the wait for the scan.</param>
+    /// <returns>Whether the scan ended focused, and the frame it ended on.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// On a camera with autofocus, a recording or another frame loop holds the camera with other options.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range.</exception>
+    /// <exception cref="ObjectDisposedException">The camera has been disposed.</exception>
+    public virtual Task<FocusResult> FocusAsync(PhotoOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+        options ??= new PhotoOptions();
+        options.Controls.ThrowIfInvalid(nameof(options));
+        if (!Session.CanFocus)
+        {
+            if (Interlocked.Exchange(ref _warnedNoAutofocus, 1) == 0)
+                Console.Error.WriteLine("LibcameraSharp: this camera has no autofocus, so there is nothing to scan.");
+            return Task.FromResult(new FocusResult(isFocused: false, metadata: null));
+        }
+        return RunExclusiveAsync(() => FocusAsync(options.Streams, options.Controls, cancellationToken), cancellationToken);
+    }
+
+    private int _warnedNoAutofocus;
+
     private async Task<Photo> TakePhotoAsync(PhotoOptions options, CancellationToken cancellationToken)
     {
         var controls = options.Controls;
@@ -61,13 +102,15 @@ public partial class CameraDevice
 
     // Scans in a viewfinder shaped like the photo: waits for the scan to start (16 frames at most),
     // then for it to end, however long that takes. A scan that fails still ends the wait.
-    private async Task FocusAsync(StreamSettings photo, CameraControls controls, CancellationToken cancellationToken)
+    private async Task<FocusResult> FocusAsync(StreamSettings photo, CameraControls controls, CancellationToken cancellationToken)
     {
         const int FramesToStart = 16;
 
         var setup = await Session.SetUpAsync(new StreamSettings { CaptureSize = ViewfinderSize(photo.CaptureSize) },
             controls with { Focus = FocusMode.Auto }, CameraUse.Frames).ConfigureAwait(false);
         using var ended = await Session.WaitForFocusScanAsync(setup.Target, FramesToStart, cancellationToken).ConfigureAwait(false);
+        var focused = ended.Metadata.TryGet(Controls.AfState, out var state) && state == AfState.Focused;
+        return new FocusResult(focused, new CaptureMetadata(ended.Metadata));
     }
 
     // Half the sensor's active area, which most sensors bin to; with a photo size, the same field of

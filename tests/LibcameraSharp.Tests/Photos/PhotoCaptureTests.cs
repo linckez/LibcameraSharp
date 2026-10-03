@@ -72,4 +72,33 @@ public class PhotoCaptureTests : IDisposable
 
         Assert.Equal(afterFirst, camera.Session.ConfigureCount);
     }
+
+    [Fact]
+    public async Task Focusing_a_camera_without_autofocus_reports_it_not_focused()
+    {
+        Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        await using var camera = CameraDevice.Open();
+        Assert.SkipWhen(camera.Capabilities.Supports(Controls.AfMode), "this camera has autofocus");
+
+        var result = await camera.FocusAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsFocused);
+        Assert.Null(result.Metadata);
+    }
+
+    [Fact]
+    public async Task Exif_too_long_for_a_jpeg_is_refused_rather_than_written_corrupt()
+    {
+        Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        Assert.SkipUnless(Libexif.IsAvailable, "libexif isn't installed, so no EXIF is written at all");
+        await using var camera = CameraDevice.Open();
+        var photo = await camera.CapturePhotoAsync(new PhotoOptions
+        {
+            Streams = new StreamSettings { CaptureSize = new Size(640, 480) },
+            Exif = new ExifData { UserComment = new string('x', 70_000) },
+        }, TestContext.Current.CancellationToken);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => photo.SaveAsync(Stream.Null, TestContext.Current.CancellationToken));
+        Assert.Contains("a JPEG holds at most", refused.Message);
+    }
 }

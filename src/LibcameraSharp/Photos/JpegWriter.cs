@@ -11,7 +11,7 @@ internal static class JpegWriter
 
     // A JPEG starts with the two-byte start-of-image marker; an EXIF block goes in the APP1 segment right after it
     // (ITU T.81, Table B.1), whose two-byte length counts itself.
-    private const int StartOfImageLength = 2, SegmentLengthSize = 2;
+    private const int StartOfImageLength = 2, SegmentLengthSize = 2, MaxSegmentLength = ushort.MaxValue;
     private const byte MarkerPrefix = 0xFF, App1 = 0xE1;
 
     /// <summary>
@@ -47,8 +47,12 @@ internal static class JpegWriter
             return;
         }
 
-        // SOI, then APP1 (marker, big-endian length including the length bytes, payload), then the rest.
+        // SOI, then APP1 (marker, big-endian length including the length bytes, payload), then the rest. The length is
+        // 16 bits, so a longer segment can't be written; it's refused rather than written corrupt.
         var segmentLength = exif.Length + SegmentLengthSize;
+        if (segmentLength > MaxSegmentLength)
+            throw new InvalidOperationException(
+                $"The EXIF data is {exif.Length} bytes; a JPEG holds at most {MaxSegmentLength - SegmentLengthSize}. Shorten the EXIF text.");
         output.Write(jpeg[..StartOfImageLength]);
         output.Write([MarkerPrefix, App1, (byte)(segmentLength >> 8), (byte)(segmentLength & 0xFF)]);
         output.Write(exif);
