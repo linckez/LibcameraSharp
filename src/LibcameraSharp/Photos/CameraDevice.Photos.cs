@@ -98,13 +98,18 @@ public partial class CameraDevice
         return new Photo(pixels, metadata, model, raw, options);
     }
 
-    // Scans in a viewfinder shaped like the photo: waits for the scan to start (16 frames at most),
-    // then for it to end, however long that takes. A scan that fails still ends the wait.
+    // Scans in a viewfinder shaped like the photo and the same way up, so a focus window lands where it
+    // does on the photo. The camera picks the readout: a fast one, as a photo's full readout can be too
+    // slow to scan in. Waits for the scan to start (16 frames at most), then for it to end, however long
+    // that takes. A scan that fails still ends the wait.
     private async Task<FocusResult> FocusAsync(StreamSettings photo, CameraControls controls, CancellationToken cancellationToken)
     {
         const int FramesToStart = 16;
 
-        var setup = await Session.SetUpAsync(new StreamSettings { CaptureSize = ViewfinderSize(photo.CaptureSize) },
+        var setup = await Session.SetUpAsync(new StreamSettings
+            {
+                CaptureSize = ViewfinderSize(photo.CaptureSize), Orientation = photo.Orientation,
+            },
             controls with { Focus = FocusMode.Auto }, CameraUse.Frames).ConfigureAwait(false);
         using var ended = await Session.WaitForFocusScanAsync(setup.Target, FramesToStart, cancellationToken).ConfigureAwait(false);
         var focused = ended.Metadata.TryGet(Controls.AfState, out var state) && state == AfState.Focused;
