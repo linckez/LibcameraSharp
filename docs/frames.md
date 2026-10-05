@@ -69,5 +69,6 @@ when there is one, so your code gets small frames while the capture stream keeps
 
 ## Metadata
 
-`frame.Metadata` is what the camera did for that frame: exposure, gain, lux, the timestamp.
+`frame.Metadata` is what the camera did for that frame: exposure, gain, lux, the timestamp, and the date and time it
+was captured (`CapturedOn`).
 `frame.Sequence` counts frames; a gap means frames the loop never saw.

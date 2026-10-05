@@ -43,4 +43,6 @@ which matters when a fast mode crops rather than bins.
 var flipped = new StreamSettings { Orientation = Orientation.Rotate180 };
 ```
 
-The camera may combine this with how the module is mounted, so check the photo rather than assume.
+The camera may combine this with how the module is mounted, so check the photo rather than assume. Many cameras, a
+Raspberry Pi's included, can only flip: upside down, mirrored, or both. A quarter turn becomes one they can give;
+`camera.Advanced.Orientation` shows which.

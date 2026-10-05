@@ -13,7 +13,7 @@ public readonly record struct RegionOfInterest(double X, double Y, double Width,
     public bool IsFull => this == Full;
 
     // A region lies inside the frame and has a size. A little slack for sums like 0.7 + 0.3 that land just past 1.
-    internal void ThrowIfInvalid(string paramName)
+    internal void ThrowIfInvalid(string? paramName)
     {
         const double Slack = 1e-9;
         if (!(X >= 0 && Y >= 0 && Width > 0 && Height > 0 && X + Width <= 1 + Slack && Y + Height <= 1 + Slack))

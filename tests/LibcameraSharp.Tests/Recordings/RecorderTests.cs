@@ -72,6 +72,39 @@ public class RecorderTests : IDisposable
         await recording.DisposeAsync();
     }
 
+    /// <summary>Without a container, each write is one whole picture, so a reader can pass pictures on without parsing.</summary>
+    [Fact]
+    public async Task Without_a_container_each_write_is_exactly_one_complete_jpeg()
+    {
+        Assert.SkipUnless(TestCamera.Present, "no libcamera device on this machine");
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var camera = CameraDevice.Open();
+        var destination = new WriteRecorder();
+        var recording = await camera.StartRecordingAsync(destination, new VideoOptions { Codec = VideoCodec.Mjpeg }, cancellationToken: ct);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (destination.Writes.Count < 3 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(20, ct);
+        await recording.StopAsync(ct);
+
+        Assert.True(destination.Writes.Count >= 3, $"only {destination.Writes.Count} writes in 10 s");
+        Assert.All(destination.Writes, write =>
+        {
+            Assert.Equal([0xFF, 0xD8], write[..2]);                 // start of image
+            Assert.Equal(write.Length - 2, write.AsSpan().IndexOf((ReadOnlySpan<byte>)[0xFF, 0xD9]));   // one end of image, at the end
+        });
+    }
+
+    // Keeps each write as it came, for checking where one write ends and the next begins.
+    private sealed class WriteRecorder : MemoryStream
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<byte[]> Writes { get; } = new();
+
+        public override void Write(ReadOnlySpan<byte> buffer) => Writes.Enqueue(buffer.ToArray());
+
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+    }
+
     // A destination that refuses every write, as a full disk does.
     private sealed class FullDisk : MemoryStream
     {

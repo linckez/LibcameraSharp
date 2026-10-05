@@ -45,6 +45,17 @@ camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.F
 For a slider over a live stream or a running recording. It returns at once, and the frames that
 follow change a few frames later.
 
+## Checking values before you keep them
+
+```csharp
+controls.ThrowIfInvalid();
+```
+
+Throws `ArgumentOutOfRangeException` for a value no camera can take: a frame rate that isn't above 0, or
+a zoom or focus window that doesn't lie inside the picture. Every call that takes controls checks this
+anyway; call it when you save controls for later, so a bad value is refused then rather than failing
+every photo after.
+
 ## What this camera can do
 
 ```csharp
@@ -69,7 +80,7 @@ sees colour at all.
 | `Gain` | `GainMode.Fixed(2.0f)`: analogue gain, 1.0 and up, the maximum in the camera's tuning, not a fixed number; or `GainMode.Auto` |
 | `FrameRate` | a number (`30`) or a range (`(5, 30)`), above zero. A fixed rate caps exposure — 30 fps allows at most 33 ms — so give a range for low light |
 | `Focus` | `FocusMode.AtMetres(0.5)`, `FocusMode.Infinity`, or `Auto` / `Continuous`. Left unset on a camera with autofocus, a photo focuses first and video and frames focus continuously |
-| `Zoom`, `AutofocusWindows` | fractions of the full sensor, 0.0 to 1.0 |
+| `Zoom`, `AutofocusWindows` | fractions of the full sensor, 0.0 to 1.0. An empty `AutofocusWindows` list lets autofocus choose where to measure again |
 | `Flicker` | `FlickerMode.Manual(period)` with how fast the room's lights pulse, so automatic exposure picks times that avoid dark bands across the picture: 10 ms where mains power is 50 Hz, 8.33 ms where it is 60 Hz; `FlickerMode.Off` turns it off |
 
 There are more: `Brightness`, `Contrast`, `Saturation`, `Sharpness`, `ExposureValue`, `Metering`,

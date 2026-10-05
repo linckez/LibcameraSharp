@@ -28,7 +28,8 @@ public sealed record StreamSettings
     /// <summary>Which way up the picture comes out.</summary>
     /// <remarks>
     /// The camera may combine this with how the module is mounted, so the orientation you get can
-    /// differ from the one you asked for.
+    /// differ from the one you asked for. Many cameras, a Raspberry Pi's included, can only flip the picture: upside down,
+    /// mirrored, or both. A quarter turn becomes one they can give; <see cref="CameraDevice.Advanced"/> shows which.
     /// </remarks>
     public Orientation Orientation { get; init; } = Orientation.Rotate0;
 

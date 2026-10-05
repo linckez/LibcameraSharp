@@ -96,4 +96,7 @@ stream, such as USB webcams, leave `Raw` null.
 
 `photo.Metadata` is what the camera did for that frame: exposure, gain, lens position, colour
 temperature, the colour gains, lux. A value is null when the camera doesn't report it.
+`photo.Metadata.CapturedOn` is the date and time the frame was captured, in UTC, from the system clock. `Timestamp` is
+the same moment as time since the system started; setting the clock doesn't change it, so use it to measure the time
+between frames.
 `photo.Metadata.All` has everything, by libcamera's control name.
