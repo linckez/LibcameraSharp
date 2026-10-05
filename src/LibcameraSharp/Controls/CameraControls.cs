@@ -91,8 +91,9 @@ public sealed record CameraControls
 
     /// <summary>The parts of the scene autofocus looks at, in fractions of the full field like <see cref="Zoom"/>.</summary>
     /// <remarks>
-    /// Options compare lists by reference, so the same windows in a new list count as a change: the controls are sent
-    /// again, and the camera isn't reconfigured.
+    /// An empty list lets autofocus choose where to measure again; null leaves the windows as they are. Options compare
+    /// lists by reference, so the same windows in a new list count as a change: the controls are sent again, and
+    /// the camera isn't reconfigured.
     /// </remarks>
     public IReadOnlyList<RegionOfInterest>? AutofocusWindows { get; init; }
 

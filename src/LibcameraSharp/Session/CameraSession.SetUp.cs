@@ -129,6 +129,14 @@ internal sealed partial class CameraSession
             else
                 WarnSkipped([Controls.AfWindows.Name]);
         }
+        else if (controls.AutofocusWindows is { Count: 0 })
+        {
+            // No windows: autofocus chooses where to measure again, rather than in the last windows set.
+            if (_camera.Controls.Contains(Controls.AfMetering))
+                SetControls(pending => pending.Set(Controls.AfMetering, AfMetering.Auto));
+            else
+                WarnSkipped([Controls.AfMetering.Name]);
+        }
     }
 
     // Options can name settings a camera doesn't have; they are skipped, with one warning per setting per camera.
