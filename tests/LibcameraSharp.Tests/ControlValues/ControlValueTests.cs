@@ -26,6 +26,19 @@ public class ControlValueTests
     }
 
     [Fact]
+    public void Controls_no_camera_can_take_are_refused_before_they_are_used()
+    {
+        new CameraControls { FrameRate = 30, Zoom = new RegionOfInterest(0.25, 0.25, 0.5, 0.5),
+                             AutofocusWindows = [new RegionOfInterest(0.7, 0.7, 0.3, 0.3)] }.ThrowIfInvalid();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { FrameRate = (0, 1000) }.ThrowIfInvalid());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CameraControls { Zoom = new RegionOfInterest(0.9, 0.9, 0.5, 0.5) }.ThrowIfInvalid());
+        var outside = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new CameraControls { AutofocusWindows = [new RegionOfInterest(1.5, 0, 0.3, 0.3)] }.ThrowIfInvalid("settings"));
+        Assert.Equal("settings", outside.ParamName);
+    }
+
+    [Fact]
     public void Lens_position_is_dioptres_and_infinity_is_zero()
     {
         // libcamera's LensPosition is 1/metres; 0 means infinity, so AtMetres(0) must not divide by it.

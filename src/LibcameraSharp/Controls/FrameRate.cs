@@ -20,7 +20,7 @@ public readonly record struct FrameRate(double Min, double Max)
     public bool IsFixed => Min == Max;
 
     // A rate is a finite number of frames a second above zero, and a range can't end below where it starts.
-    internal void ThrowIfInvalid(string paramName)
+    internal void ThrowIfInvalid(string? paramName)
     {
         if (!double.IsFinite(Min) || !double.IsFinite(Max) || Min <= 0 || Max < Min)
             throw new ArgumentOutOfRangeException(paramName, this, "A frame rate is a finite number of frames a second above 0, and a range's Max can't be below its Min.");

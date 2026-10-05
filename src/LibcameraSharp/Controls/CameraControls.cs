@@ -97,9 +97,18 @@ public sealed record CameraControls
     /// </remarks>
     public IReadOnlyList<RegionOfInterest>? AutofocusWindows { get; init; }
 
-    // Values that can't be right whatever the camera: a frame rate or region out of range. What only the camera knows,
-    // such as its exposure limits, is left to it, and skipped with a warning when it can't take a value.
-    internal void ThrowIfInvalid(string paramName)
+    /// <summary>
+    /// Throws when a value can't be right on any camera: a frame rate that isn't above 0, or a zoom or focus window
+    /// that doesn't lie inside the picture. Every call that takes controls checks this; call it yourself to refuse
+    /// such values earlier, for example when they're saved.
+    /// </summary>
+    /// <remarks>
+    /// What only the camera knows, such as its exposure limits, isn't checked here: the camera takes what it can, and
+    /// a control it doesn't have is skipped with a warning.
+    /// </remarks>
+    /// <param name="paramName">The name the exception gives for the controls, or what holds them.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A frame rate, zoom or focus window is out of range.</exception>
+    public void ThrowIfInvalid(string? paramName = null)
     {
         FrameRate?.ThrowIfInvalid(paramName);
         Zoom?.ThrowIfInvalid(paramName);

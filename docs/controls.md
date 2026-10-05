@@ -45,6 +45,17 @@ camera.SetControls(new CameraControls { Exposure = ExposureMode.Fixed(TimeSpan.F
 For a slider over a live stream or a running recording. It returns at once, and the frames that
 follow change a few frames later.
 
+## Checking values before you keep them
+
+```csharp
+controls.ThrowIfInvalid();
+```
+
+Throws `ArgumentOutOfRangeException` for a value no camera can take: a frame rate that isn't above 0, or
+a zoom or focus window that doesn't lie inside the picture. Every call that takes controls checks this
+anyway; call it when you save controls for later, so a bad value is refused then rather than failing
+every photo after.
+
 ## What this camera can do
 
 ```csharp
