@@ -187,6 +187,19 @@ public class MockingTests
     }
 
     [Fact]
+    public void The_capture_time_reads_back_as_the_moment_in_utc_and_is_null_when_not_reported()
+    {
+        var taken = new DateTimeOffset(2026, 10, 5, 9, 30, 15, 250, TimeSpan.Zero);
+        var nanoseconds = (taken - DateTimeOffset.UnixEpoch).Ticks * TimeSpan.NanosecondsPerTick;
+
+        var reported = LibcameraSharpModelFactory.CaptureMetadata(otherControls: [new(Controls.FrameWallClock, nanoseconds)]);
+
+        Assert.Equal(taken, reported.CapturedOn);
+        Assert.Equal(TimeSpan.Zero, reported.CapturedOn!.Value.Offset);
+        Assert.Null(LibcameraSharpModelFactory.CaptureMetadata().CapturedOn);
+    }
+
+    [Fact]
     public void Factory_capabilities_answer_as_a_camera_would()
     {
         var capabilities = LibcameraSharpModelFactory.CameraCapabilities(

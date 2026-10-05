@@ -34,10 +34,24 @@ public sealed class CaptureMetadata
     /// <summary>Estimated scene brightness in lux.</summary>
     public float? Lux => _metadata.TryGet(Controls.Lux, out var lux) ? lux : null;
 
-    /// <summary>When the frame was captured: time since the system booted, including suspend (<c>CLOCK_BOOTTIME</c>).</summary>
-    /// <remarks>libcamera <c>Controls.SensorTimestamp</c>, in nanoseconds — the one thing every pipeline reports.</remarks>
+    /// <summary>When the frame was captured, as time since the system started.</summary>
+    /// <remarks>
+    /// Setting the system's date and time doesn't change it, so use it to measure the time between frames. Every camera
+    /// reports it. libcamera <c>Controls.SensorTimestamp</c>, in nanoseconds (<c>CLOCK_BOOTTIME</c>).
+    /// </remarks>
     public TimeSpan? Timestamp =>
         _metadata.TryGet(Controls.SensorTimestamp, out var nanoseconds) ? TimeSpan.FromTicks(nanoseconds / TimeSpan.NanosecondsPerTick) : null;
+
+    /// <summary>The date and time the frame was captured, in UTC, from the system clock.</summary>
+    /// <remarks>
+    /// The same moment as <see cref="Timestamp"/>. It's only as right as the system clock, and moves when the clock is set;
+    /// for measuring the time between frames, use <see cref="Timestamp"/>. Null when the camera doesn't report it.
+    /// libcamera <c>Controls.FrameWallClock</c>, in nanoseconds since 1 January 1970 (<c>CLOCK_REALTIME</c>).
+    /// </remarks>
+    public DateTimeOffset? CapturedOn =>
+        _metadata.TryGet(Controls.FrameWallClock, out var nanoseconds)
+            ? DateTimeOffset.UnixEpoch.AddTicks(nanoseconds / TimeSpan.NanosecondsPerTick)
+            : null;
 
     /// <summary>How long the frame took, end to end.</summary>
     public TimeSpan? FrameDuration =>

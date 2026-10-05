@@ -35,6 +35,7 @@ Things an assistant gets wrong without being told:
 - One process holds a camera at a time; a second gets `CameraBusyException`.
 - On a camera with autofocus a photo focuses first; set `Controls.Focus` to skip that. `camera.FocusAsync(options)` runs that scan on its own and returns `IsFocused` and the frame it ended on; keep it with `FocusMode.AtDioptres(result.Metadata!.LensPosition!.Value)`.
 - `camera.Capabilities.Exposure`, `.Gain`, `.Focus`, `.FrameRate` and the rest give each setting's range in `CameraControls` units.
+- `Metadata.CapturedOn` is the date and time a frame was captured, in UTC, from the system clock; `Metadata.Timestamp` is the same moment as time since the system started, which setting the clock doesn't change, so use it to measure the time between frames.
 - Without a camera (tests, a laptop): derive from `CameraDevice` (protected constructor, virtual members) and build return values with `LibcameraSharpModelFactory`.
 
 ## Docs
