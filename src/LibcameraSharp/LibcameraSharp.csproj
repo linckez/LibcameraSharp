@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
-    <Version>10.1.1</Version>
+    <Version>10.1.2</Version>
     <RootNamespace>LibcameraSharp</RootNamespace>
   </PropertyGroup>
 
