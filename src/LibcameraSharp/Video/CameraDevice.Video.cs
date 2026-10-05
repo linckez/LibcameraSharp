@@ -23,7 +23,8 @@ public partial class CameraDevice
     /// <summary>Starts recording to a stream, such as an HTTP response, a socket or a pipe; it records until you stop the returned recording.</summary>
     /// <remarks>
     /// A destination slower than the camera slows the camera: recordings never drop frames. Stopping the
-    /// recording closes <paramref name="destination"/>.
+    /// recording closes <paramref name="destination"/>. With MJPEG and no container, each <c>Write</c> to
+    /// <paramref name="destination"/> is exactly one complete JPEG.
     /// </remarks>
     /// <param name="destination">Where the recording goes; stopping the recording closes it.</param>
     /// <param name="options">How to record; the default video options when null. An override gets null when the caller passed none.</param>
@@ -131,7 +132,10 @@ public partial class CameraDevice
     /// </summary>
     /// <exception cref="IOException">Writing failed for a reason other than the destination going away, such as a full disk.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A frame rate or region in the options is out of range, or <paramref name="container"/> is none of the containers.</exception>
-    /// <remarks>A destination that goes away, such as a client hanging up, ends the recording without an exception.</remarks>
+    /// <remarks>
+    /// A destination that goes away, such as a client hanging up, ends the recording without an exception. With MJPEG and
+    /// no container, each <c>Write</c> to <paramref name="destination"/> is exactly one complete JPEG.
+    /// </remarks>
     public virtual async Task RecordToAsync(Stream destination, VideoOptions? options = null,
         VideoContainer container = VideoContainer.None, CancellationToken cancellationToken = default)
     {

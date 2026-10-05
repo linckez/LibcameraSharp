@@ -38,6 +38,7 @@ Things an assistant gets wrong without being told:
 - `Metadata.CapturedOn` is the date and time a frame was captured, in UTC, from the system clock; `Metadata.Timestamp` is the same moment as time since the system started, which setting the clock doesn't change, so use it to measure the time between frames.
 - `controls.ThrowIfInvalid()` refuses values no camera can take (frame rate, zoom, focus windows); call it before saving controls for later.
 - `Controls.AutofocusWindows`: a list focuses on those parts of the picture, an empty list lets autofocus choose where to measure again, `null` leaves it as it is. They also apply on a running camera through `SetControls`.
+- With MJPEG and no container, each `Write` to the stream is exactly one complete JPEG.
 - Without a camera (tests, a laptop): derive from `CameraDevice` (protected constructor, virtual members) and build return values with `LibcameraSharpModelFactory`.
 
 ## Docs

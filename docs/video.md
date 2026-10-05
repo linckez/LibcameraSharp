@@ -62,6 +62,9 @@ arrives. `VideoContainer.MpegTs` is the other common choice for a live feed. The
 multipart framing, authentication — is yours; the SDK hands over bytes and stops there. The
 [StreamingCamera demo](../demo/StreamingCamera/) is a whole webcam in one file.
 
+With MJPEG and no container, each `Write` to the stream is exactly one complete JPEG, so the stream can pass each picture on as it is, for example as one part of a
+`multipart/x-mixed-replace` response, without looking for where one JPEG ends.
+
 ## Nothing is dropped
 
 A recording never drops a frame: a destination slower than the camera slows the camera. Dropping an

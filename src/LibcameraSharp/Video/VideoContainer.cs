@@ -7,7 +7,10 @@ namespace LibcameraSharp;
 /// </remarks>
 public enum VideoContainer
 {
-    /// <summary>No container: the encoder's own bytes.</summary>
+    /// <summary>
+    /// No container: the encoder's own bytes. With MJPEG, each <c>Write</c> to the stream is exactly one complete JPEG, so
+    /// the stream can pass each picture on as it is.
+    /// </summary>
     None,
 
     /// <summary>MP4, the format everything plays. Fragmented automatically when the destination cannot seek.</summary>
